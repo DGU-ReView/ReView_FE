@@ -1,8 +1,12 @@
+import { useNavigate } from 'react-router-dom';
+
 import Card from '@/components/home/card';
 
 import Fire from '@/assets/fire.svg?react';
+import { route } from '@/routes/route';
 
 export default function Home() {
+  const navigate = useNavigate();
   return (
     <div className="w-full h-full pl-25">
       <div className="w-full h-full flex flex-col justify-center items-start">
@@ -20,9 +24,9 @@ export default function Home() {
         </section>
         <section className="w-full flex justify-around items-center gap-15">
           <div className="flex justify-between items-cente gap-5">
-            <Card type="myInterview" />
-            <Card type="community" />
-            <Card type="myPage" />
+            <Card type="myInterview" onClick={() => navigate(route.community)} />
+            <Card type="community" onClick={() => navigate(route.community)} />
+            <Card type="myPage" onClick={() => navigate(route.myPage)} />
           </div>
           <Fire className="size-90 shrink-0" />
         </section>

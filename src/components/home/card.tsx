@@ -6,8 +6,9 @@ type TCardType = 'myInterview' | 'community' | 'myPage';
 
 interface ICardProps {
   type: TCardType;
+  onClick: () => void;
 }
-export default function Card({ type }: ICardProps) {
+export default function Card({ type, onClick }: ICardProps) {
   const titleMap = {
     myInterview: '나의 면접',
     community: '커뮤니티',
@@ -25,7 +26,10 @@ export default function Card({ type }: ICardProps) {
   };
 
   return (
-    <div className=" px-10 cursor-pointer gap-6 py-9 min-w-60 max-w-95 min-h-41 flex flex-col items-center rounded-[10px] bg-[#F8A16F]/5 border border-white/20 hover:shadow-[10px_20px_100px_0_rgba(248,161,111,0.4)] shadow-[10px_20px_100px_0_rgba(248,161,111,0.2)]">
+    <div
+      onClick={onClick}
+      className=" px-10 cursor-pointer gap-6 py-9 min-w-60 max-w-95 min-h-41 flex flex-col items-center rounded-[10px] bg-[#F8A16F]/5 border border-white/20 hover:shadow-[10px_20px_100px_0_rgba(248,161,111,0.4)] shadow-[10px_20px_100px_0_rgba(248,161,111,0.2)]"
+    >
       <div>{svgMap[type]}</div>
       <p className="text-lg font-bold">{titleMap[type]}</p>
       <p className="text-sm font-normal leading-[23px] text-center text-black/80">{descriptionMap[type]}</p>
