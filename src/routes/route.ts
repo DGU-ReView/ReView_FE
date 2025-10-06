@@ -3,4 +3,5 @@ export const route = {
   community: '/community',
   myPage: '/myPage',
   evaluate: '/evaluate',
+  evaluateStart: '/evaluate/start',
 };

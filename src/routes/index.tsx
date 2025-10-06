@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import Layout from '@/layouts';
 import Community from '@/pages/community';
 import Evaluate from '@/pages/evaluate';
+import EvaluateStart from '@/pages/evaluateStart';
 import Home from '@/pages/home';
 import MyPage from '@/pages/myPage';
 
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       { path: 'community', element: <Community /> },
       { path: 'myPage', element: <MyPage /> },
       { path: 'evaluate', element: <Evaluate /> },
+      { path: 'evaluate/start', element: <EvaluateStart /> },
     ],
   },
 ]);
