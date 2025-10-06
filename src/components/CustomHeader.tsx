@@ -10,7 +10,9 @@ export default function CustomHeader() {
       <Logo className="shrink-0" />
       <div className="flex justify-center items-center gap-20 shrink-0">
         <button className="text-base font-medium">나의 면접</button>
-        <button className="text-base font-medium">아카이브</button>
+        <button className="text-base font-medium" onClick={() => navigate(route.evaluate)}>
+          평가하기
+        </button>
         <button className="text-base font-medium" onClick={() => navigate(route.community)}>
           Community
         </button>
