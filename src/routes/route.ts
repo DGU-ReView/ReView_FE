@@ -7,4 +7,6 @@ export const route = {
   communityWrite: '/community/write',
   communityEdit: '/community/edit',
   communityDetail: '/community/detail',
+  myInterview: '/myInterview',
+  myEvaluate: '/myEvaluate',
 };

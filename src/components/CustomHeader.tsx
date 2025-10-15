@@ -16,7 +16,9 @@ export default function CustomHeader() {
         <button className="text-base font-medium" onClick={() => navigate(route.community)}>
           Community
         </button>
-        <button className="text-base font-medium">MyPage</button>
+        <button className="text-base font-medium" onClick={() => navigate(route.myPage)}>
+          MyPage
+        </button>
       </div>
       <div className="flex justify-center items-center gap-20 shrink-0">
         <p>채채님</p>
