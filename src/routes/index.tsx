@@ -8,6 +8,8 @@ import CommunityWrite from '@/pages/communityWrite';
 import Evaluate from '@/pages/evaluate';
 import EvaluateStart from '@/pages/evaluateStart';
 import Home from '@/pages/home';
+import MyEvaluate from '@/pages/myEvaluate';
+import MyInterview from '@/pages/myInterview';
 import MyPage from '@/pages/myPage';
 
 export const router = createBrowserRouter([
@@ -23,6 +25,8 @@ export const router = createBrowserRouter([
       { path: 'community/write', element: <CommunityWrite /> },
       { path: 'community/edit', element: <CommunityEdit /> },
       { path: 'community/detail/:id', element: <CommunityDetail /> },
+      { path: 'myInterview/:id', element: <MyInterview /> },
+      { path: 'myEvaluate/:id', element: <MyEvaluate /> },
     ],
   },
 ]);
