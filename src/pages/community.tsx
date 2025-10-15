@@ -1,13 +1,16 @@
 import 'swiper/css';
 
+import { useNavigate } from 'react-router-dom';
 import { Swiper, SwiperSlide } from 'swiper/react';
 
 import CommunityCard from '@/components/community/communityCard';
 
 import Frog from '@/assets/frog.svg?react';
 import Search from '@/assets/search.svg?react';
+import { route } from '@/routes/route';
 
 export default function Community() {
+  const navigate = useNavigate();
   const categories = ['IT 계열', '상경 계열', '이공 계열'];
   return (
     <>
@@ -25,7 +28,12 @@ export default function Community() {
             />
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-5" />
           </div>
-          <button className="w-full h-13 rounded-lg flex items-center justify-center bg-[#E95F45] text-white text-base font-medium">게시물 쓰러가기</button>
+          <button
+            className="w-full h-13 rounded-lg flex items-center justify-center bg-[#E95F45] text-white text-base font-medium"
+            onClick={() => navigate(route.communityWrite)}
+          >
+            게시물 쓰러가기
+          </button>
         </div>
       </section>
       <section className="w-full h-fit flex flex-col gap-20">
