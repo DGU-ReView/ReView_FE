@@ -9,8 +9,15 @@ import Evaluate from '@/pages/evaluate';
 import EvaluateStart from '@/pages/evaluateStart';
 import Home from '@/pages/home';
 import MyEvaluate from '@/pages/myEvaluate';
-import MyInterview from '@/pages/myInterview';
+import MyInterviews from '@/pages/myInterview';
 import MyPage from '@/pages/myPage';
+import MyInterview from '@/pages/Interview/upload';
+import UploadDone from '@/pages/Interview/upload_done';
+import UploadCheck from '@/pages/Interview/upload_check';
+import QuestionLoading from '@/pages/Interview/question_loading';
+import QuestionDone from '@/pages/Interview/question_done';
+import MainAnswer from '@/pages/Interview/main_answer';
+import FeedbackResult from '@/pages/Interview/feedback_result';
 
 export const router = createBrowserRouter([
   {
@@ -25,8 +32,15 @@ export const router = createBrowserRouter([
       { path: 'community/write', element: <CommunityWrite /> },
       { path: 'community/edit', element: <CommunityEdit /> },
       { path: 'community/detail/:id', element: <CommunityDetail /> },
-      { path: 'myInterview/:id', element: <MyInterview /> },
+      { path: 'myInterview/:id', element: <MyInterviews /> },
       { path: 'myEvaluate/:id', element: <MyEvaluate /> },
+      { path: 'myInterview', element: <MyInterview /> },
+      { path: 'upload-done', element: <UploadDone /> },
+      { path: 'upload-check', element: <UploadCheck /> },
+      { path: 'question-loading', element: <QuestionLoading /> },
+      { path: 'question-done', element: <QuestionDone /> },
+      { path: 'main-answer', element: <MainAnswer /> },
+      { path: 'feedback-result', element: <FeedbackResult /> },
     ],
   },
 ]);

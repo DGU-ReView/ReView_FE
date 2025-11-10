@@ -24,7 +24,7 @@ export default function Home() {
         </section>
         <section className="w-full flex justify-around items-center gap-15">
           <div className="flex justify-between items-cente gap-5">
-            <Card type="myInterview" onClick={() => navigate(route.community)} />
+            <Card type="myInterview" onClick={() => navigate(route.myInterview)} />
             <Card type="community" onClick={() => navigate(route.community)} />
             <Card type="myPage" onClick={() => navigate(route.myPage)} />
           </div>
