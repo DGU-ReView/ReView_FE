@@ -9,7 +9,7 @@ import Evaluate from '@/pages/evaluate';
 import EvaluateStart from '@/pages/evaluateStart';
 import Home from '@/pages/home';
 import MyEvaluate from '@/pages/myEvaluate';
-import MyInterviews from '@/pages/myInterview';
+import MyInterviews from '@/pages/myInterviews';
 import MyPage from '@/pages/myPage';
 import MyInterview from '@/pages/Interview/upload';
 import UploadDone from '@/pages/Interview/upload_done';
