@@ -132,6 +132,12 @@ export default function FeedbackResult() {
             const feedbackText = summary.aiFeedback || summary.selfFeedback;
             const feedbackType = summary.aiFeedback ? 'AI 피드백' : summary.selfFeedback ? '셀프 피드백' : '피드백 없음';
 
+            // 실제 timeout 여부 확인 (feedbacks 배열에서 해당 질문 찾기)
+            const correspondingFeedback = feedbackData.feedbacks?.find(
+              (fb) => fb.questionId === summary.questionNumber || fb.question === summary.rootQuestion
+            );
+            const isTimeout = correspondingFeedback?.timeout ?? false;
+            
             // 답변 텍스트 (Q&A 턴에서 ANSWER만 추출)
             const answerTurns = summary.qnaTurns.filter((turn) => turn.turn === 'ANSWER');
             const hasAnswer = answerTurns.length > 0;
@@ -149,7 +155,9 @@ export default function FeedbackResult() {
                 {/* 카드 내용 (스크롤 가능) */}
                 <div className="mb-4 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                   {isShowingAnswer ? (
-                    hasAnswer ? (
+                    isTimeout ? (
+                      <p className="text-sm text-gray-500 italic">시간 초과로 답변하지 못했습니다.</p>
+                    ) : hasAnswer ? (
                       <div className="space-y-3">
                         {summary.qnaTurns.map((turn, turnIndex) => (
                           <div key={turnIndex}>
@@ -159,7 +167,7 @@ export default function FeedbackResult() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500 italic">시간 초과로 답변하지 못했습니다.</p>
+                      <p className="text-sm text-gray-500 italic">답변 데이터를 불러올 수 없습니다.</p>
                     )
                   ) : feedbackText ? (
                     <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{feedbackText}</p>

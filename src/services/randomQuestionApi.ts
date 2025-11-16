@@ -125,7 +125,7 @@ export const getFeedbackResult = async (
   recordingId: number,
 ): Promise<IFeedbackResultResponse> => {
   const resp = await apiClient.get(
-    `/api/random-questions/peer/recordings/${recordingId}/feedbacks`,
+    `/api/randomquestions/peer/recordings/${recordingId}/feedbacks`,
   );
   return unwrapResult<IFeedbackResultResponse>(resp.data);
 };

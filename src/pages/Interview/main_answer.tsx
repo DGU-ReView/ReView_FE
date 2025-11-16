@@ -4,8 +4,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
 import type { IQuestion } from '@/services/interviewApi';
-import { sendTimeout, uploadRecordingAndGetNext } from '@/services/interviewApi';
+import { uploadRecordingAndGetNext, timeoutAndGetNextQuestion } from '@/services/interviewApi';
+
 import clockFrog from '@/assets/clockFrog.svg';
+import orangeFrog from '@/assets/orangeFrog.svg';
+
+const MAX_TIME = 180;
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
@@ -23,19 +27,18 @@ export default function AnswerQuestion() {
 
   const { fileName = '자소서', jobTitle, interviewType = 'normal', resumeKey, sessionId, firstQuestion } = location.state || {};
 
-  /** ---------------- 상태 ---------------- */
   const [currentQuestion, setCurrentQuestion] = useState<IQuestion | null>(firstQuestion ?? null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
-  // 탭(질문{order}) – 서버에서 오는 Question.order를 기반으로 생성/유지
   const [ordersSeen, setOrdersSeen] = useState<number[]>(firstQuestion ? [firstQuestion.order] : []);
 
-  // 녹음 관련 상태
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [remainingTime, setRemainingTime] = useState(180);
+
+  const [remainingTime, setRemainingTime] = useState(MAX_TIME);
+
   const [retryCount, setRetryCount] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -43,26 +46,26 @@ export default function AnswerQuestion() {
   const audioChunksRef = useRef<Blob[]>([]);
   const latestAudioBlobRef = useRef<Blob | null>(null);
 
-  // 재생
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
+  // 남은 시간이 줄어들어야 하는지 여부:
+  // - 질문 노출 & 완료모달 아님 & 남은시간 > 0
+  // - (녹음 중) 또는 (아직 녹음본이 없음 = 최초 진입 상태)
+  // - 재생 중(isPlaying)에는 줄어들면 안 됨
+  const shouldTick = !!currentQuestion && !showCompleteModal && remainingTime > 0 && (isRecording || (!recordedAudioUrl && !isPlaying));
 
-  /** ---------------- 초기 유효성 ---------------- */
   useEffect(() => {
     if (!firstQuestion) {
-      // question_loading에서 세션 생성 후 오도록 설계됨
       navigate('/question-loading', {
         replace: true,
         state: { fileName, jobTitle, interviewType, resumeKey },
       });
     }
-    // 의도적으로 최초 마운트 시에만 검증
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** ---------------- 공통 초기화 함수(호출 위치보다 위 선언) ---------------- */
   function resetForNext() {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -74,84 +77,84 @@ export default function AnswerQuestion() {
     setRecordedAudioUrl(null);
     latestAudioBlobRef.current = null;
     setRecordingTime(0);
-    setRemainingTime(180); // 다음 질문용 기본 180초
+
+    setRemainingTime(MAX_TIME); // 다음 질문에서만 초기화
     setRetryCount(1);
   }
 
-  /** ---------------- 녹음 중지 ---------------- */
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       try {
         mediaRecorderRef.current.stop();
-      } catch {
-        /* noop */
-      }
+      } catch {}
       setIsRecording(false);
       setIsPaused(false);
+      // ⛔ 정지 후에는 카운트다운이 더 줄지 않음(useEffect로 interval이 중단됨)
     }
   }, [isRecording]);
 
-  /** ---------------- 시간초과 처리 ---------------- */
-  const handleTimeout = async (questionId: string) => {
-    try {
-      const next = await sendTimeout(questionId); // ← 다음 질문 시도
-      resetForNext();
-      applyNext(next); // ← next가 있으면 다음으로, 없으면 내부에서 완료 모달
-    } catch (e) {
-      console.error('시간초과 처리 실패:', e);
-      alert('시간이 초과되었습니다. 다음 질문으로 넘어갑니다.');
-    }
-  };
+  const handleTimeout = useCallback(
+    async (questionId: string) => {
+      try {
+        const next = await timeoutAndGetNextQuestion(questionId);
+        alert('시간초과로 답변하지 못했습니다. 다음 질문으로 넘어갑니다.');
+        resetForNext();
+        applyNext(next);
+      } catch (e) {
+        console.error('시간초과 처리 실패:', e);
+        alert('시간이 초과되었습니다. 다음 질문으로 넘어갑니다.');
+        resetForNext();
+        applyNext(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
-  /** ---------------- 녹음 시간 타이머 (녹음 중일 때만 증가) ---------------- */
+  // ⏱ 녹음 시간(녹음 중에만 증가)
   useEffect(() => {
     if (isRecording && !isPaused) {
-      const id = window.setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-
-      return () => {
-        clearInterval(id);
-      };
+      const id = window.setInterval(() => setRecordingTime((prev) => prev + 1), 1000);
+      return () => clearInterval(id);
     }
-
-    // 녹음 중이 아니면 타이머 없음
     return undefined;
   }, [isRecording, isPaused]);
 
-  /** ---------------- 180초 카운트다운 (질문 뜨는 순간부터 시작) ---------------- */
+  // ✅ 카운트다운: 최초 진입(아직 녹음본 없음)에도 감소,
+  //    녹음 중에도 감소, 재생 중/정지 후에는 멈춤
   useEffect(() => {
-    // 질문이 없거나, 이미 완료 모달이 떠 있으면 타이머 돌리지 않음
-    if (!currentQuestion || showCompleteModal) return;
+    if (!currentQuestion) return;
 
-    // 질문이 화면에 노출되는 순간부터 1초마다 remainingTime 감소
-    const id = window.setInterval(() => {
-      setRemainingTime((prev) => {
-        if (prev <= 1) {
-          clearInterval(id);
+    let id: number | null = null;
 
-          // 녹음 중이면 강제로 정지
-          if (isRecording) {
-            stopRecording();
+    if (shouldTick) {
+      id = window.setInterval(() => {
+        setRemainingTime((prev) => {
+          if (prev <= 1) {
+            if (id) clearInterval(id);
+
+            // 시간 끝나면 녹음 중지 + 서버 timeout 처리
+            if (isRecording) {
+              try {
+                mediaRecorderRef.current?.stop();
+              } catch {}
+            }
+
+            if (currentQuestion?.questionId) {
+              void handleTimeout(currentQuestion.questionId);
+            }
+            return 0;
           }
+          return prev - 1;
+        });
+      }, 1000);
+    }
 
-          if (currentQuestion?.questionId) {
-            void handleTimeout(currentQuestion.questionId);
-          }
-
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    // 질문이 바뀌거나, 컴포넌트 언마운트 시 타이머 정리
     return () => {
-      clearInterval(id);
+      if (id) clearInterval(id);
     };
-  }, [currentQuestion?.questionId, isRecording, stopRecording, handleTimeout, showCompleteModal]);
+  }, [shouldTick, currentQuestion?.questionId, isRecording, handleTimeout]);
 
-  /** ---------------- 녹음 제어 ---------------- */
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -161,9 +164,7 @@ export default function AnswerQuestion() {
       latestAudioBlobRef.current = null;
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = () => {
@@ -174,11 +175,8 @@ export default function AnswerQuestion() {
         const audioUrl = URL.createObjectURL(audioBlob);
         setRecordedAudioUrl(audioUrl);
 
-        // 재생 상태 초기화
         setIsPlaying(false);
         setPlaybackTime(0);
-
-        // 스트림 정리
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -186,9 +184,8 @@ export default function AnswerQuestion() {
       setIsRecording(true);
       setIsPaused(false);
       setRecordedAudioUrl(null);
-
-      // 녹음 시간은 새로 시작
       setRecordingTime(0);
+      // ⏱ 남은 시간은 녹음 중일 때만 줄어듦
     } catch (error) {
       console.error('마이크 접근 오류:', error);
       alert('마이크 접근 권한이 필요합니다.');
@@ -208,7 +205,6 @@ export default function AnswerQuestion() {
 
   const handleRetry = () => {
     if (retryCount > 0) {
-      // 재생 중이면 멈춤
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -217,15 +213,25 @@ export default function AnswerQuestion() {
       setPlaybackTime(0);
       setPlaybackDuration(0);
 
+      // 이전 녹음 데이터 완전히 제거
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
       setRecordedAudioUrl(null);
       setRecordingTime(0);
-      setRemainingTime(180);
+
+      // 🔧 중요: 이전 오디오 blob 초기화
+      latestAudioBlobRef.current = null;
+      audioChunksRef.current = [];
+
+      // ✅ 다시 녹음하기: 시간 초기화
+      setRemainingTime(MAX_TIME);
+
       setRetryCount((c) => c - 1);
       void startRecording();
     }
   };
 
-  /** ---------------- 재생 제어 ---------------- */
   const toggleAudioPlayback = () => {
     if (!audioRef.current) return;
     if (audioRef.current.paused) {
@@ -273,7 +279,6 @@ export default function AnswerQuestion() {
     };
   }, [recordedAudioUrl, recordingTime]);
 
-  /** ---------------- 다음 질문 ---------------- */
   const applyNext = (next: IQuestion | null) => {
     if (!next) {
       setShowCompleteModal(true);
@@ -290,26 +295,43 @@ export default function AnswerQuestion() {
       return;
     }
 
+    // 중복 제출 방지
+    if (isSubmitting) {
+      console.log('이미 제출 중입니다.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const next = await uploadRecordingAndGetNext(currentQuestion.questionId, latestAudioBlobRef.current);
       resetForNext();
       applyNext(next);
-    } catch (e) {
+    } catch (e: any) {
       console.error('다음 질문 처리 실패:', e);
-      alert('녹음 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
+
+      // 에러 타입별 처리
+      if (e?.response?.data?.errorCode === 'ALREADY_IN_QUEUE_OR_DONE') {
+        alert('이미 처리된 녹음입니다. 다음 질문으로 넘어갑니다.');
+        // 다음 질묬을 가져오기 위해 재시도
+        try {
+          // timeout 처리로 다음 질묬 가져오기
+          const next = await timeoutAndGetNextQuestion(currentQuestion.questionId);
+          resetForNext();
+          applyNext(next);
+        } catch (err) {
+          console.error('다음 질묬 조회 실패:', err);
+          alert('다음 질묬으로 넘어갑니다.');
+          resetForNext();
+          applyNext(null);
+        }
+      } else {
+        alert('녹음 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /** ---------------- 탭 이동(표시용) ---------------- */
-  const handleOrderTabClick = useCallback(() => {
-    // 서버가 특정 order의 과거 질문을 다시 불러오는 API를 제공하지 않음.
-    // 탭은 "표시용"으로 유지.
-  }, []);
-
-  /** ---------------- 기타 ---------------- */
   const handleFinalFeedback = () => {
     if (sessionId) {
       navigate('/feedback-result', { state: { sessionId } });
@@ -336,12 +358,12 @@ export default function AnswerQuestion() {
           <p className="text-gray-600 text-md mt-3">제한 시간 내에 면접질문에 답변해주세요.</p>
         </div>
 
-        {/* 질문 탭(표시용: order) */}
+        {/* 질문 탭 */}
         <div className="flex gap-2 mb-6">
           {ordersSeen.map((o) => (
             <button
               key={o}
-              onClick={handleOrderTabClick}
+              onClick={() => {}}
               className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
                 currentQuestion?.order === o
                   ? 'bg-white border-2 border-coral-500 text-coral-500'
@@ -373,7 +395,7 @@ export default function AnswerQuestion() {
             {/* 타이머 */}
             <div className="mb-4">
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / 180) * 100}%` }} />
+                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / MAX_TIME) * 100}%` }} />
               </div>
               <p className="text-center text-sm text-gray-500 mt-2">
                 {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...` : '시간이 종료되었습니다.'}
@@ -496,9 +518,9 @@ export default function AnswerQuestion() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-12 max-w-md w-full mx-4 text-center">
             <div className="mb-6">
-              <img src="src/assets/orangeFrog.svg" alt="완료" className="w-24 h-auto mx-auto" />
+              <img src={orangeFrog} alt="완료" className="w-24 h-auto mx-auto" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 mb-8">모든 질문에 완벽히 답했어요!</p>
+            <p className="text-2xl font-bold text-gray-900 mb-8">면접이 완료되었어요!</p>
             <button onClick={handleFinalFeedback} className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-lg font-medium transition-colors">
               최종 피드백 확인
             </button>
