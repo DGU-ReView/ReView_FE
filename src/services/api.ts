@@ -25,7 +25,7 @@ apiClient.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // 응답 인터셉터
@@ -38,7 +38,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       // 서버가 응답을 반환한 경우
       console.error('API Error:', error.response.data);
-      
+
       // 401 Unauthorized
       if (error.response.status === 401) {
         // 로그인 페이지로 리다이렉트 등
@@ -52,7 +52,7 @@ apiClient.interceptors.response.use(
       console.error('Error setting up request:', error.message);
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiClient;

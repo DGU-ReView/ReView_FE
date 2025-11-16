@@ -1,6 +1,7 @@
-import { useState, type DragEvent, type ChangeEvent } from 'react';
-import { Upload } from 'lucide-react';
+import { type ChangeEvent, type DragEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Upload } from 'lucide-react';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 import { uploadResume } from '@/services/interviewApi';
 
