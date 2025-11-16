@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import InterviewLayout from '@/layouts/InterviewLayout';
 import type { IQuestion } from '@/services/interviewApi';
 import { sendTimeout, uploadRecordingAndGetNext } from '@/services/interviewApi';
+import clockFrog from '@/assets/clockFrog.svg';
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
@@ -91,17 +92,16 @@ export default function AnswerQuestion() {
   }, [isRecording]);
 
   /** ---------------- 시간초과 처리 ---------------- */
-  const handleTimeout = useCallback(async (questionId: string) => {
+  const handleTimeout = async (questionId: string) => {
     try {
-      // BE 문서의 "사용자가 시간초과로 답변하지 못한 경우 프론트가 호출하는 API"
-      await sendTimeout(questionId);
-      // 현재 스펙: 시간초과 나면 세션 종료 → 완료 모달
-      setShowCompleteModal(true);
+      const next = await sendTimeout(questionId); // ← 다음 질문 시도
+      resetForNext();
+      applyNext(next); // ← next가 있으면 다음으로, 없으면 내부에서 완료 모달
     } catch (e) {
       console.error('시간초과 처리 실패:', e);
-      alert('시간초과 처리에 실패했습니다.');
+      alert('시간이 초과되었습니다. 다음 질문으로 넘어갑니다.');
     }
-  }, []);
+  };
 
   /** ---------------- 녹음 시간 타이머 (녹음 중일 때만 증가) ---------------- */
   useEffect(() => {
@@ -365,7 +365,7 @@ export default function AnswerQuestion() {
 
           {/* 캐릭터 이미지 */}
           <div className="flex justify-center mb-8">
-            <img src="src/assets/clockFrog.svg" alt="면접관" className="w-48 h-auto" />
+            <img src={clockFrog} alt="면접관" className="w-48 h-auto" />
           </div>
 
           {/* 타이머 & 녹음 컨트롤 */}

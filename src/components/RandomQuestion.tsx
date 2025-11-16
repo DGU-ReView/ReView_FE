@@ -1,3 +1,4 @@
+// RandomQuestion.tsx (SSE 안정화 버전)
 import { useEffect, useRef, useState } from 'react';
 import {
   getRandomQuestion,
@@ -43,46 +44,133 @@ export default function RandomQuestion() {
   // 제출 중 상태
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ===== SSE로 랜덤 팝업 알림 구독 =====
+  // ===== SSE 안정화: 재연결/중복방지/가시성 대응 =====
+  const esRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const attemptsRef = useRef(0);
+  const lastPeerIdRef = useRef<number | null>(null); // 중복 방지
+  const lastPingAtRef = useRef<number>(Date.now());
+  const pingWatchRef = useRef<number | null>(null);
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  };
+
+  const scheduleReconnect = (why: string) => {
+    if (reconnectTimerRef.current) return;
+    const wait = Math.min(30000, 1000 * Math.pow(2, attemptsRef.current)); // 1s,2s,4s..최대 30s
+    attemptsRef.current += 1;
+    // eslint-disable-next-line no-console
+    console.warn(`[SSE] reconnect in ${wait}ms (${why})`);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      openSSE();
+    }, wait);
+  };
+
+  const closeSSE = () => {
+    clearReconnectTimer();
+    if (esRef.current) {
+      try {
+        esRef.current.close();
+      } catch {
+        /* noop */
+      }
+      esRef.current = null;
+    }
+  };
+
+  const handleMessage = async (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data) as TNotification;
+      // 중복 차단
+      if (lastPeerIdRef.current === data.peerFeedbackId) return;
+      lastPeerIdRef.current = data.peerFeedbackId;
+
+      // 새 팝업 초기화
+      setNotification(data);
+      setShowPopup(true);
+      setErrorMessage(null);
+      setQuestionDetail(null);
+      setRecordingTime(0);
+      setRemainingTime(MAX_TIME);
+
+      setRecordedAudio((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      latestAudioBlobRef.current = null;
+
+      setLoadingQuestion(true);
+      const q = await getRandomQuestion(data.peerFeedbackId);
+      setQuestionDetail(q);
+    } catch (err) {
+      console.error('랜덤 팝업 질문 처리 중 오류:', err);
+      setErrorMessage('팝업 질문을 불러오지 못했습니다.');
+    } finally {
+      setLoadingQuestion(false);
+    }
+  };
+
+  const openSSE = () => {
+    closeSSE(); // 중복 방지
+    attemptsRef.current = 0; // 성공 시 초기화 예정
+
+    const es = subscribeToNotifications(handleMessage, (errorEvt) => {
+      console.error('SSE 연결 오류:', errorEvt);
+      scheduleReconnect('onerror');
+    });
+    // 선택: 서버가 event: ping 을 보낸다면 하트비트 갱신
+    try {
+      (es as any).addEventListener?.('ping', () => {
+        lastPingAtRef.current = Date.now();
+      });
+    } catch {
+      /* noop */
+    }
+
+    // 연결 성공 감지
+    (es as any).onopen = () => {
+      attemptsRef.current = 0;
+      lastPingAtRef.current = Date.now();
+      // eslint-disable-next-line no-console
+      console.log('[SSE] opened');
+    };
+
+    esRef.current = es;
+
+    // 클라이언트 측 하트비트 감시(서버 ping 미수신 시 재연결)
+    if (pingWatchRef.current) clearInterval(pingWatchRef.current);
+    pingWatchRef.current = window.setInterval(() => {
+      const diff = Date.now() - lastPingAtRef.current;
+      // 90초 이상 활동 없으면 재연결 시도
+      if (diff > 90000) {
+        scheduleReconnect('no-activity');
+      }
+    }, 15000);
+  };
+
+  // 최초 구독 + 탭 가시성 대응
   useEffect(() => {
-    const eventSource = subscribeToNotifications(
-      async (event) => {
-        try {
-          const data = JSON.parse(event.data) as TNotification;
-
-          // 새 팝업 도착: 상태 초기화
-          setNotification(data);
-          setShowPopup(true);
-          setErrorMessage(null);
-          setQuestionDetail(null);
-          setRecordingTime(0);
-          setRemainingTime(MAX_TIME);
-
-          // 이전 녹음 URL 제거
-          setRecordedAudio((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return null;
-          });
-          latestAudioBlobRef.current = null;
-
-          setLoadingQuestion(true);
-          const q = await getRandomQuestion(data.peerFeedbackId);
-          setQuestionDetail(q);
-        } catch (err) {
-          console.error('랜덤 팝업 질문 처리 중 오류:', err);
-          setErrorMessage('팝업 질문을 불러오지 못했습니다.');
-        } finally {
-          setLoadingQuestion(false);
-        }
-      },
-      (error) => {
-        console.error('SSE 연결 오류:', error);
-      },
-    );
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        openSSE();
+      } else {
+        closeSSE();
+      }
+    };
+    openSSE();
+    document.addEventListener('visibilitychange', onVis);
 
     return () => {
-      eventSource.close();
+      document.removeEventListener('visibilitychange', onVis);
+      closeSSE();
+      if (pingWatchRef.current) clearInterval(pingWatchRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===== 유틸 =====
@@ -93,7 +181,7 @@ export default function RandomQuestion() {
     return `${m}:${r.toString().padStart(2, '0')}`;
   };
 
-  // ===== 팝업 전체 제한시간 타이머 (팝업이 뜨는 순간부터 감소) =====
+  // ===== 팝업 전체 제한시간 타이머 =====
   useEffect(() => {
     if (!showPopup) {
       if (countdownTimerRef.current) {
@@ -102,7 +190,6 @@ export default function RandomQuestion() {
       }
       return;
     }
-
     countdownTimerRef.current = window.setInterval(() => {
       setRemainingTime((prev) => {
         if (prev <= 1) {
@@ -124,12 +211,9 @@ export default function RandomQuestion() {
     };
   }, [showPopup]);
 
-  // 시간 종료 시 부가 처리 (녹음 중이면 정지 등)
+  // 시간 종료 시 부가 처리
   useEffect(() => {
-    if (!showPopup) return;
-    if (remainingTime > 0) return;
-
-    // 시간 끝났으면 녹음/재생 정지
+    if (!showPopup || remainingTime > 0) return;
     if (isRecording && mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.stop();
@@ -139,14 +223,12 @@ export default function RandomQuestion() {
       setIsRecording(false);
       setIsPausedRec(false);
     }
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
+    if (audioRef.current) audioRef.current.pause();
   }, [remainingTime, showPopup, isRecording]);
 
   const isTimeOver = remainingTime <= 0;
 
-  // ===== 녹음 타이머 (녹음 중일 때만 증가) =====
+  // ===== 녹음 타이머 =====
   useEffect(() => {
     if (isRecording && !isPausedRec) {
       recordTimerRef.current = window.setInterval(() => setRecordingTime((t) => t + 1), 1000);
@@ -168,7 +250,6 @@ export default function RandomQuestion() {
       alert('시간이 종료되어 더 이상 녹음할 수 없습니다.');
       return;
     }
-
     try {
       if (recordedAudio) {
         URL.revokeObjectURL(recordedAudio);
@@ -189,19 +270,14 @@ export default function RandomQuestion() {
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-
       mediaRecorder.onstop = () => {
         const mime = mediaRecorder.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: mime });
         latestAudioBlobRef.current = blob;
-
         const url = URL.createObjectURL(blob);
         setRecordedAudio(url);
-
-        // 스트림 종료
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
-
         setIsRecording(false);
         setIsPausedRec(false);
       };
@@ -243,7 +319,6 @@ export default function RandomQuestion() {
       alert('시간이 종료되어 다시 녹음할 수 없습니다.');
       return;
     }
-
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -251,7 +326,6 @@ export default function RandomQuestion() {
     setIsPlaying(false);
     setPlaybackTime(0);
     setPlaybackDuration(0);
-
     if (recordedAudio) {
       URL.revokeObjectURL(recordedAudio);
       setRecordedAudio(null);
@@ -279,7 +353,6 @@ export default function RandomQuestion() {
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
-
     const onLoadedMeta = () => {
       setPlaybackDuration(Math.floor(isFinite(el.duration) ? el.duration : 0));
       setPlaybackTime(Math.floor(el.currentTime || 0));
@@ -291,15 +364,12 @@ export default function RandomQuestion() {
       setIsPlaying(false);
       setPlaybackTime(0);
     };
-
     el.addEventListener('loadedmetadata', onLoadedMeta);
     el.addEventListener('timeupdate', onTimeUpdate);
     el.addEventListener('play', onPlay);
     el.addEventListener('pause', onPause);
     el.addEventListener('ended', onEnded);
-
     if (el.readyState >= 1) onLoadedMeta();
-
     return () => {
       el.removeEventListener('loadedmetadata', onLoadedMeta);
       el.removeEventListener('timeupdate', onTimeUpdate);
@@ -316,7 +386,7 @@ export default function RandomQuestion() {
     setShowPopup(false);
   };
 
-  // ===== 답변 제출 (녹음 업로드 + 피드백 생성) =====
+  // ===== 답변 제출 =====
   const handleSubmit = async () => {
     if (isTimeOver) {
       alert('시간이 종료되어 답변을 제출할 수 없습니다.');
@@ -334,7 +404,6 @@ export default function RandomQuestion() {
     try {
       setIsSubmitting(true);
       const feedback = await uploadFeedbackRecordingAndGetResult(questionDetail.question.questionId, latestAudioBlobRef.current);
-
       alert(`AI 피드백이 도착했어요.\n\n${feedback.aiFeedback}`);
       setShowPopup(false);
     } catch (err) {
@@ -364,9 +433,7 @@ export default function RandomQuestion() {
   if (!showPopup) return null;
 
   const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
-
-  // 진행바는 한 개 질문이라 100%로 고정(디자인 유지용)
-  const progress = 100;
+  const progress = 100; // 한 개 질문이라 100%
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
@@ -391,31 +458,25 @@ export default function RandomQuestion() {
           <p className="text-center text-red-500 mb-8">{errorMessage}</p>
         ) : questionDetail ? (
           <>
-            {/* 맥락이 되는 질문 + STT */}
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
               <p className="text-xs font-semibold text-gray-500 mb-1">맥락이 되는 질문</p>
               <p className="text-sm text-gray-700 mb-2">{questionDetail.context.questionText}</p>
               {questionDetail.context.sttText && <p className="text-xs text-gray-500 whitespace-pre-line">{questionDetail.context.sttText}</p>}
             </div>
-
-            {/* 실제 답변해야 할 질문 */}
             <p className="text-gray-700 text-center mb-8">{questionDetail.question.questionText}</p>
           </>
         ) : (
           <p className="text-center text-gray-500 mb-8">질문 정보를 불러오지 못했습니다.</p>
         )}
 
-        {/* 이미지 (import 사용) */}
         <div className="flex justify-center mb-4">
           <img src={clockFrog} alt="면접관" className="w-32 h-auto" />
         </div>
 
-        {/* 팝업 제한시간 표시 */}
         <p className="text-center text-sm text-gray-500 mb-4">
           {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다.` : '시간이 종료되었습니다.'}
         </p>
 
-        {/* 질문 진행바 (디자인 유지용) */}
         <div className="mb-4">
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div className="h-full bg-coral-500 transition-all duration-500" style={{ width: `${progress}%` }} />
@@ -423,13 +484,10 @@ export default function RandomQuestion() {
           <p className="text-center text-sm text-gray-500 mt-2">랜덤 팝업 질문</p>
         </div>
 
-        {/* 녹음 / 재생 영역 */}
         <div className="bg-gray-100 rounded-2xl p-6 mb-6">
           {!recordedAudio ? (
-            // === 녹음 UI ===
             <div className="flex items-center justify-center gap-4">
               {!isRecording ? (
-                // 시작 버튼 (마이크 아이콘)
                 <button
                   onClick={startRecording}
                   disabled={isTimeOver}
@@ -445,7 +503,6 @@ export default function RandomQuestion() {
                 </button>
               ) : (
                 <>
-                  {/* 일시정지/재개 */}
                   <button
                     onClick={togglePauseRec}
                     className="w-12 h-12 bg-yellow-500 hover:bg-yellow-600 rounded-full flex items-center justify-center shadow-md transition-colors"
@@ -461,11 +518,7 @@ export default function RandomQuestion() {
                       </svg>
                     )}
                   </button>
-
-                  {/* 녹음 시간 */}
                   <span className="text-lg font-semibold text-coral-500">{formatTime(recordingTime)}</span>
-
-                  {/* 정지 */}
                   <button
                     onClick={stopRecording}
                     className="w-12 h-12 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-md transition-colors"
@@ -479,7 +532,6 @@ export default function RandomQuestion() {
               )}
             </div>
           ) : (
-            // === 재생 UI ===
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleAudioPlayback}
@@ -496,23 +548,19 @@ export default function RandomQuestion() {
                   </svg>
                 )}
               </button>
-
               <div className="flex-1">
                 <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
                   <div className="h-full bg-coral-500 rounded-full transition-all duration-150" style={{ width: `${playbackPercent}%` }} />
                 </div>
               </div>
-
               <span className="text-sm text-gray-600 font-medium flex-shrink-0">
                 {formatTime(playbackTime)} / {formatTime(playbackDuration)}
               </span>
-
               <audio ref={audioRef} src={recordedAudio || ''} preload="metadata" />
             </div>
           )}
         </div>
 
-        {/* 버튼 그룹 */}
         <div className="flex justify-between items-center">
           <button
             onClick={handleRetry}
