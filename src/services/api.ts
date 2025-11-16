@@ -34,21 +34,21 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
+    // 특별 처리: 500 에러여도 result 데이터가 있으면 성공으로 처리
+    // (백엔드 버그: 500 코드를 보내지만 정상 데이터도 함께 보냄)
+    if (
+      error.response?.status === 500 &&
+      error.response?.data &&
+      (error.response.data.result || error.response.data.sessionId || error.response.data.interviewSummary)
+    ) {
+      // 조용히 성공으로 처리 (에러 로그 없이)
+      return error.response;
+    }
+
     // 에러 처리
     if (error.response) {
       // 서버가 응답을 반환한 경우
       console.error('API Error:', error.response.data);
-
-      // 특별 처리: 500 에러여도 result 데이터가 있으면 성공으로 처리
-      // (백엔드 버그: 500 코드를 보내지만 정상 데이터도 함께 보냄)
-      if (
-        error.response.status === 500 &&
-        error.response.data &&
-        (error.response.data.result || error.response.data.sessionId)
-      ) {
-        console.warn('⚠️ 500 에러지만 정상 데이터가 있어 성공으로 처리합니다.');
-        return error.response;
-      }
 
       // 401 Unauthorized
       if (error.response.status === 401) {
