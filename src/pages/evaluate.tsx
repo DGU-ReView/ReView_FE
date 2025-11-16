@@ -1,10 +1,7 @@
-import { useNavigate } from 'react-router-dom';
-
 import Frog from '@/assets/frog.svg?react';
 import { route } from '@/routes/route';
 
 export default function Evaluate() {
-  const navigate = useNavigate();
   const textStyle = 'font-base text-sm mt-1';
   return (
     <div className="w-full h-full px-20 pt-20">
@@ -15,7 +12,7 @@ export default function Evaluate() {
       <div className="w-full flex justify-center items-center">
         <div
           className="w-100 h-110 rounded-[20px] shadow-[0_7px_24px_0_#44474c21] flex flex-col gap-6 justify-center items-center cursor-pointer hover:shadow-[0_7px_24px_0_#25272b2d]"
-          onClick={() => navigate(route.evaluateStart)}
+          onClick={() => window.location.replace(route.evaluateStart)}
         >
           <Frog className="size-50" />
           <div className="flex flex-col items-center">

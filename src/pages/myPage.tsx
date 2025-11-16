@@ -85,7 +85,7 @@ export default function MyPage() {
               </div>
               <Swiper spaceBetween={50} slidesPerView={slidesPerView}>
                 <SwiperSlide key="add-card" className="!mr-14">
-                  <AddCard />
+                  <AddCard onClick={() => window.location.replace(title === '나의 면접,' ? route.myInterview : route.evaluate)} />
                 </SwiperSlide>
 
                 {title === '나의 면접,'
