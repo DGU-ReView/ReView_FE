@@ -148,74 +148,27 @@ export const pollFeedbackResult = async (
   throw new Error('Polling timeout - 피드백 생성 시간이 너무 오래 걸립니다.');
 };
 
-// ---------------------- SSE 구독 ----------------------
-
 /**
  * 7. SSE 구독
- * - 기본 경로: /api/subscribe (VITE_SSE_PATH로 오버라이드 가능)
- * - baseURL 및 path가 모두 /api를 포함해도 중복되지 않도록 정규화
- * - 절대 URL이 오면 그대로 사용
  */
 export const subscribeToNotifications = (
-  onMessage: (event: MessageEvent<string>) => void,
-  onError?: (error: unknown) => void,
+  onMessage: (event: MessageEvent) => void,
+  onError?: (error: Event) => void,
 ): EventSource => {
-  const base = apiClient.defaults.baseURL ?? ''; // 예: '', '/api', 'https://api.domain.com', 'https://api.domain.com/api'
-  let path = import.meta.env.VITE_SSE_PATH ?? '/api/subscribe';
-
-  // 절대 경로면 그대로 사용
-  if (/^https?:\/\//.test(path)) {
-    // eslint-disable-next-line no-console
-    console.log('[SSE] connect (absolute)', { url: path, hasToken: !!localStorage.getItem('accessToken') });
-    return new (EventSourcePolyfill as any)(
-      appendToken(path),
-      esOptions(),
-    ) as EventSource;
-  }
-
-  // base와 path 모두 상대라면 안전하게 합치기
-  const normBase = (base || '').replace(/\/+$/, '');     // 끝 슬래시 제거
-  let normPath = path.replace(/^\/+/, '/');              // 앞 슬래시는 하나만 유지
-
-  // base가 /api 로 끝나고, path가 /api/...로 시작하면 path의 선두 /api 제거
-  if (/\/api$/.test(normBase) && /^\/api\//.test(normPath)) {
-    normPath = normPath.replace(/^\/api/, '');
-  }
-
-  // 최종 URL
-  const finalUrl = `${normBase}${normPath.startsWith('/') ? '' : '/'}${normPath || ''}` || '/api/subscribe';
-
-  // 디버깅
-  // eslint-disable-next-line no-console
-  console.log('[SSE] connect', { base: normBase || '(relative)', rawPath: path, url: finalUrl, hasToken: !!localStorage.getItem('accessToken') });
-
-  const es = new (EventSourcePolyfill as any)(
-    appendToken(finalUrl),
-    esOptions(),
-  ) as EventSource;
-
-  (es as any).onmessage = onMessage;
-  if (onError) (es as any).onerror = onError;
-
-  return es;
-};
-
-// 토큰을 쿼리스트링으로 추가(백엔드가 허용하는 경우)
-function appendToken(url: string) {
-  const token = localStorage.getItem('accessToken') ?? '';
-  if (!token) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}token=${encodeURIComponent(token)}`;
-}
-
-function esOptions() {
-  const token = localStorage.getItem('accessToken') ?? '';
-  return {
+  const baseURL = apiClient.defaults.baseURL ?? '';
+  const eventSource = new EventSourcePolyfill(`${baseURL}/api/subscribe`, {
     withCredentials: true,
-    heartbeatTimeout: 120_000,
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  };
-}
+    heartbeatTimeout: 300000, // 5분
+  }) as EventSource;
+
+  eventSource.onmessage = onMessage;
+
+  if (onError) {
+    eventSource.onerror = onError;
+  }
+
+  return eventSource;
+};
 
 // ---------------------- 업로드 → 피드백 전체 플로우 ----------------------
 
