@@ -1,4 +1,3 @@
-// RandomQuestion.tsx (SSE 안정화 버전)
 import { useEffect, useRef, useState } from 'react';
 import {
   getRandomQuestion,
@@ -44,13 +43,11 @@ export default function RandomQuestion() {
   // 제출 중 상태
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ===== SSE 안정화: 재연결/중복방지/가시성 대응 =====
+  // ===== SSE & 요청 취소 컨트롤 =====
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const attemptsRef = useRef(0);
-  const lastPeerIdRef = useRef<number | null>(null); // 중복 방지
-  const lastPingAtRef = useRef<number>(Date.now());
-  const pingWatchRef = useRef<number | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null); // ✅ 이전 요청 취소용
 
   const clearReconnectTimer = () => {
     if (reconnectTimerRef.current) {
@@ -61,9 +58,8 @@ export default function RandomQuestion() {
 
   const scheduleReconnect = (why: string) => {
     if (reconnectTimerRef.current) return;
-    const wait = Math.min(30000, 1000 * Math.pow(2, attemptsRef.current)); // 1s,2s,4s..최대 30s
+    const wait = Math.min(30000, 1000 * Math.pow(2, attemptsRef.current));
     attemptsRef.current += 1;
-    // eslint-disable-next-line no-console
     console.warn(`[SSE] reconnect in ${wait}ms (${why})`);
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
@@ -76,84 +72,83 @@ export default function RandomQuestion() {
     if (esRef.current) {
       try {
         esRef.current.close();
-      } catch {
-        /* noop */
-      }
+      } catch {}
       esRef.current = null;
     }
   };
 
-  const handleMessage = async (event: MessageEvent) => {
+  const fetchRandomQuestion = async (peerFeedbackId: number) => {
+    // 이전 요청 취소
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = new AbortController();
+
+    setLoadingQuestion(true);
+    setErrorMessage(null);
+
     try {
-      const data = JSON.parse(event.data) as TNotification;
-      // 중복 차단
-      if (lastPeerIdRef.current === data.peerFeedbackId) return;
-      lastPeerIdRef.current = data.peerFeedbackId;
-
-      // 새 팝업 초기화
-      setNotification(data);
-      setShowPopup(true);
-      setErrorMessage(null);
-      setQuestionDetail(null);
-      setRecordingTime(0);
-      setRemainingTime(MAX_TIME);
-
-      setRecordedAudio((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
+      console.log('[RQ] fetch start', { peerFeedbackId });
+      const q = await getRandomQuestion(peerFeedbackId, {
+        noCache: true, // ✅ 캐시 우회
+        signal: fetchAbortRef.current.signal, // ✅ 이전 요청 취소 대응
       });
-      latestAudioBlobRef.current = null;
-
-      setLoadingQuestion(true);
-      const q = await getRandomQuestion(data.peerFeedbackId);
+      console.log('[RQ] fetch ok', q);
       setQuestionDetail(q);
-    } catch (err) {
-      console.error('랜덤 팝업 질문 처리 중 오류:', err);
-      setErrorMessage('팝업 질문을 불러오지 못했습니다.');
+    } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.name === 'AbortError') {
+        console.log('[RQ] fetch aborted');
+      } else {
+        console.error('[RQ] fetch error', err);
+        setErrorMessage('팝업 질문을 불러오지 못했습니다.');
+      }
     } finally {
       setLoadingQuestion(false);
     }
   };
 
+  const handleMessage = async (event: MessageEvent) => {
+    // 서버가 보내는 ping/keepalive 등 비 JSON은 무시
+    try {
+      const parsed = JSON.parse(event.data);
+      if (!parsed || typeof parsed !== 'object' || parsed.peerFeedbackId == null) {
+        return;
+      }
+      const data = parsed as TNotification;
+
+      // 새 팝업 초기화
+      setNotification(data);
+      setShowPopup(true);
+      setQuestionDetail(null);
+      setRecordedAudio((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      latestAudioBlobRef.current = null;
+      setRecordingTime(0);
+      setRemainingTime(MAX_TIME);
+
+      await fetchRandomQuestion(Number(data.peerFeedbackId));
+    } catch {
+      // 무시(keepalive)
+    }
+  };
+
   const openSSE = () => {
-    closeSSE(); // 중복 방지
-    attemptsRef.current = 0; // 성공 시 초기화 예정
+    closeSSE();
+    attemptsRef.current = 0;
 
     const es = subscribeToNotifications(handleMessage, (errorEvt) => {
       console.error('SSE 연결 오류:', errorEvt);
       scheduleReconnect('onerror');
     });
-    // 선택: 서버가 event: ping 을 보낸다면 하트비트 갱신
-    try {
-      (es as any).addEventListener?.('ping', () => {
-        lastPingAtRef.current = Date.now();
-      });
-    } catch {
-      /* noop */
-    }
 
-    // 연결 성공 감지
     (es as any).onopen = () => {
       attemptsRef.current = 0;
-      lastPingAtRef.current = Date.now();
-      // eslint-disable-next-line no-console
       console.log('[SSE] opened');
     };
 
     esRef.current = es;
-
-    // 클라이언트 측 하트비트 감시(서버 ping 미수신 시 재연결)
-    if (pingWatchRef.current) clearInterval(pingWatchRef.current);
-    pingWatchRef.current = window.setInterval(() => {
-      const diff = Date.now() - lastPingAtRef.current;
-      // 90초 이상 활동 없으면 재연결 시도
-      if (diff > 90000) {
-        scheduleReconnect('no-activity');
-      }
-    }, 15000);
   };
 
-  // 최초 구독 + 탭 가시성 대응
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === 'visible') {
@@ -164,11 +159,20 @@ export default function RandomQuestion() {
     };
     openSSE();
     document.addEventListener('visibilitychange', onVis);
-
     return () => {
       document.removeEventListener('visibilitychange', onVis);
       closeSSE();
-      if (pingWatchRef.current) clearInterval(pingWatchRef.current);
+      fetchAbortRef.current?.abort();
+      if (recordedAudio) URL.revokeObjectURL(recordedAudio);
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -217,9 +221,7 @@ export default function RandomQuestion() {
     if (isRecording && mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.stop();
-      } catch {
-        /* noop */
-      }
+      } catch {}
       setIsRecording(false);
       setIsPausedRec(false);
     }
@@ -414,26 +416,10 @@ export default function RandomQuestion() {
     }
   };
 
-  // 정리
-  useEffect(() => {
-    return () => {
-      if (recordedAudio) URL.revokeObjectURL(recordedAudio);
-      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
-    };
-  }, [recordedAudio]);
-
   if (!showPopup) return null;
 
   const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
-  const progress = 100; // 한 개 질문이라 100%
+  const progress = 100;
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
