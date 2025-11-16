@@ -23,6 +23,7 @@ export type TMyInterviewResponse = {
     items: {
       interviewId: number;
       jobRole: string;
+      createdAt?: string; // 생성 날짜
     }[];
     nextCursor: number | null;
     hasNext: boolean;

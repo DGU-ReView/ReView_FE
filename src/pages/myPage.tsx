@@ -83,15 +83,20 @@ export default function MyPage() {
                 <p className="bg-[#E95F45]/20 px-1 w-fit rounded text-2xl font-bold">{title}</p>
                 <p className="text-lg font-extralight">{description}</p>
               </div>
-              <Swiper spaceBetween={50} slidesPerView={slidesPerView}>
+              <Swiper spaceBetween={20} slidesPerView={slidesPerView}>
                 <SwiperSlide key="add-card" className="!mr-14">
                   <AddCard onClick={() => window.location.replace(title === '나의 면접,' ? route.myInterviews : route.evaluate)} />
                 </SwiperSlide>
 
                 {title === '나의 면접,'
-                  ? myInterviewData?.result.items.map(({ interviewId, jobRole }) => (
+                  ? myInterviewData?.result.items.map(({ interviewId, jobRole, createdAt }) => (
                       <SwiperSlide key={interviewId}>
-                        <InterviewCard id={interviewId} title={jobRole} onClick={() => movePage(routes, interviewId)} />
+                        <InterviewCard 
+                          id={interviewId} 
+                          title={jobRole} 
+                          createdAt={createdAt}
+                          onClick={() => movePage(routes, interviewId)} 
+                        />
                       </SwiperSlide>
                     ))
                   : myFeedbackData?.result.items.map(({ peerFeedbackId, title: jobTitle }) => (
