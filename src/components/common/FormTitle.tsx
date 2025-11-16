@@ -1,11 +1,12 @@
 type TInputProps = {
   text: string;
+  none?: boolean;
 };
-export default function FormTitle({ text }: TInputProps) {
+export default function FormTitle({ text, none }: TInputProps) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[#E95F45] font-semibold text-[22px]">{text}</p>
-      <hr className="text-[#E95F45]" />
+      {!none && <hr className="text-[#E95F45]" />}
     </div>
   );
 }

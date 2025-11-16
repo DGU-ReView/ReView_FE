@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 
-interface Question {
+interface IQuestion {
   id: number;
   main: string;
   sub: string;
@@ -11,7 +12,7 @@ interface Question {
 export default function AnswerQuestion() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { fileName = '2025년_3월_자소서', jobTitle, interviewType } = location.state || {};
+  const { fileName = '2025년_3월_자소서' } = location.state || {};
 
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -34,13 +35,28 @@ export default function AnswerQuestion() {
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
 
-  const questions: Question[] = [
+  const questions: IQuestion[] = [
     { id: 1, main: '메인질문', sub: '간단히 자기소개를 해주세요.' },
     { id: 2, main: '메인질문', sub: '이 직무를 선택한 이유는 무엇인가요?' },
     { id: 3, main: '메인질문', sub: '본인의 강점은 무엇이라고 생각하나요?' },
     { id: 4, main: '메인질문', sub: '입사 후 목표는 무엇인가요?' },
   ];
 
+  // 녹음 중지
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        setIsRecording(false);
+        setIsPaused(false);
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  };
   // 타이머 시작/정지
   useEffect(() => {
     if (isRecording && !isPaused) {
@@ -107,21 +123,6 @@ export default function AnswerQuestion() {
     } catch (error) {
       console.error('마이크 접근 오류:', error);
       alert('마이크 접근 권한이 필요합니다.');
-    }
-  };
-
-  // 녹음 중지
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {}
-      setIsRecording(false);
-      setIsPaused(false);
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
     }
   };
 
@@ -310,7 +311,7 @@ export default function AnswerQuestion() {
           <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">
             {currentQuestion}. ({questions[currentQuestion - 1].main})
           </h3>
-          <div className="border-t border-gray-200 pt-6"></div>
+          <div className="border-t border-gray-200 pt-6" />
 
           <p className="text-gray-700 text-center mb-8">
             {currentQuestion}-1. {questions[currentQuestion - 1].sub}
@@ -326,7 +327,7 @@ export default function AnswerQuestion() {
             {/* 타이머 */}
             <div className="mb-4">
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / 180) * 100}%` }}></div>
+                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / 180) * 100}%` }} />
               </div>
               <p className="text-center text-sm text-gray-500 mt-2">
                 {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...` : '시간이 종료되었습니다.'}
@@ -401,7 +402,7 @@ export default function AnswerQuestion() {
 
                   <div className="flex-1">
                     <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
-                      <div className="h-full bg-coral-500 rounded-full transition-all duration-150" style={{ width: `${playbackPercent}%` }}></div>
+                      <div className="h-full bg-coral-500 rounded-full transition-all duration-150" style={{ width: `${playbackPercent}%` }} />
                     </div>
                   </div>
 

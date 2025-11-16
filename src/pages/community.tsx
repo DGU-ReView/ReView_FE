@@ -3,6 +3,8 @@ import 'swiper/css';
 import { useNavigate } from 'react-router-dom';
 import { Swiper, SwiperSlide } from 'swiper/react';
 
+import useGetCommunityList from '@/hooks/useGetCommunityList';
+
 import CommunityCard from '@/components/community/communityCard';
 
 import Frog from '@/assets/frog.svg?react';
@@ -11,7 +13,19 @@ import { route } from '@/routes/route';
 
 export default function Community() {
   const navigate = useNavigate();
-  const categories = ['IT 계열', '상경 계열', '이공 계열'];
+  const { data } = useGetCommunityList({ cursors: {}, limit: 20 });
+  const categories = [
+    { label: 'IT / 공학', value: 'IT_ENGINEERING' },
+    { label: '비즈니스 / 금융', value: 'BUSINESS_FINANCE' },
+    { label: '공공 / 사회', value: 'PUBLIC_SOCIAL' },
+    { label: '의료 / 보건', value: 'HEALTH_MEDICAL' },
+    { label: '예술 / 미디어', value: 'ART_MEDIA' },
+    { label: '서비스 / 관광', value: 'SERVICE_TOURISM' },
+    { label: '영업 / 유통', value: 'SALES_DISTRIBUTION' },
+    { label: '기술 / 제조·건설', value: 'TECH_MANUFACTURING_CONSTRUCTION' },
+    { label: '농업 / 수산', value: 'AGRICULTURE_FISHERY' },
+  ] as const;
+
   return (
     <>
       <section className="w-full h-full flex flex-col items-center justify-center gap-30">
@@ -45,21 +59,38 @@ export default function Community() {
           </div>
         </div>
         <div className="flex flex-col gap-8">
-          {categories.map((title, idx) => (
-            <div className="h-75 w-full flex gap-25" key={idx}>
-              <div className="text-xl font-bold shrink-0 pl-20 flex flex-col gap-1">
-                <p className="bg-[#E95F45]/20 px-1 w-fit rounded">{title}</p>
-                <p>면접자들과 공유해요</p>
+          {categories.map(({ label, value }) => {
+            const categoryData = data?.find((d) => d.category === value);
+            const previews = categoryData?.previews ?? [];
+
+            if (!previews.length) return null;
+
+            const isSingle = previews.length <= 1;
+            const slidesPerView = previews.length >= 3 ? 2.7 : previews.length;
+
+            return (
+              <div className="w-full flex gap-25" key={value}>
+                <div className="text-xl font-bold shrink-0 pl-20 flex flex-col gap-1">
+                  <p className="bg-[#E95F45]/20 px-1 w-fit rounded">{label}</p>
+                  <p>면접자들과 공유해요</p>
+                </div>
+
+                {isSingle ? (
+                  <div className="flex-1 flex gap-5">
+                    <CommunityCard title={previews[0].title} onClick={() => navigate(route.communityDetail + `/${previews[0].id}`)} />
+                  </div>
+                ) : (
+                  <Swiper className="flex-1" spaceBetween={50} slidesPerView={slidesPerView} slidesOffsetAfter={50}>
+                    {previews.map(({ id, title }) => (
+                      <SwiperSlide key={id}>
+                        <CommunityCard title={title} onClick={() => navigate(route.communityDetail + `/${id}`)} />
+                      </SwiperSlide>
+                    ))}
+                  </Swiper>
+                )}
               </div>
-              <Swiper spaceBetween={50} slidesPerView={2.7} slidesOffsetAfter={50}>
-                {[...Array(5)].map((_, i) => (
-                  <SwiperSlide key={i}>
-                    <CommunityCard />
-                  </SwiperSlide>
-                ))}
-              </Swiper>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </>
