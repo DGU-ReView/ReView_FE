@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 
 export default function QuestionLoading() {
@@ -18,15 +19,13 @@ export default function QuestionLoading() {
     <InterviewLayout activeMenu="answer">
       {/* 중앙 컨텐츠 영역 */}
       <div className="flex-1 flex flex-col items-center justify-center">
-        <p className="text-gray-900 text-2xl font-semibold mb-12">
-          AI가 맞춤형 질문을 생성중입니다 ...
-        </p>
-        
+        <p className="text-gray-900 text-2xl font-semibold mb-12">AI가 맞춤형 질문을 생성중입니다 ...</p>
+
         {/* 로딩 애니메이션 - 점 3개 */}
         <div className="flex gap-3">
-          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
         </div>
       </div>
 
