@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import InterviewLayout from '@/layouts/InterviewLayout';
 import type { ICreateInterviewSessionResponse } from '@/services/interviewApi';
 import { createInterviewSession } from '@/services/interviewApi';
+import Frog from '@/assets/frog.svg';
 
 const ANSWER_ROUTE = '/main-answer';
 
@@ -87,7 +88,7 @@ export default function QuestionLoading() {
 
       {/* 오른쪽 캐릭터 이미지 */}
       <div className="w-80 flex items-end justify-center">
-        <img src="src/assets/frog.svg" alt="리뷰캐릭터" className="w-64 h-auto" />
+        <img src={Frog} alt="리뷰캐릭터" className="w-48 h-auto" />
       </div>
 
       <style>{`
