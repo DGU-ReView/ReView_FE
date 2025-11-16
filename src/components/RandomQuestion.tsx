@@ -1,4 +1,3 @@
-// src/components/RandomQuestion.tsx
 import { useEffect, useRef, useState } from 'react';
 import {
   getRandomQuestion,
@@ -7,8 +6,10 @@ import {
   type IRandomQuestion,
   type IRandomNotificationPayload,
 } from '@/services/randomQuestionApi';
+import clockFrog from '@/assets/clockFrog.svg';
 
 type TNotification = IRandomNotificationPayload;
+const MAX_TIME = 180; // 팝업 질문 제한 시간(초)
 
 export default function RandomQuestion() {
   const [showPopup, setShowPopup] = useState(false);
@@ -16,6 +17,10 @@ export default function RandomQuestion() {
   const [questionDetail, setQuestionDetail] = useState<IRandomQuestion | null>(null);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // ===== 타이머 상태 =====
+  const [remainingTime, setRemainingTime] = useState<number>(MAX_TIME);
+  const countdownTimerRef = useRef<number | null>(null);
 
   // ===== 녹음 상태 =====
   const [isRecording, setIsRecording] = useState(false);
@@ -44,12 +49,16 @@ export default function RandomQuestion() {
       async (event) => {
         try {
           const data = JSON.parse(event.data) as TNotification;
-          // SSE로 알림이 오면 팝업을 띄우고, 해당 peerFeedbackId로 질문 조회
+
+          // 새 팝업 도착: 상태 초기화
           setNotification(data);
           setShowPopup(true);
           setErrorMessage(null);
           setQuestionDetail(null);
           setRecordingTime(0);
+          setRemainingTime(MAX_TIME);
+
+          // 이전 녹음 URL 제거
           setRecordedAudio((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return null;
@@ -84,7 +93,60 @@ export default function RandomQuestion() {
     return `${m}:${r.toString().padStart(2, '0')}`;
   };
 
-  // ===== 녹음 타이머 =====
+  // ===== 팝업 전체 제한시간 타이머 (팝업이 뜨는 순간부터 감소) =====
+  useEffect(() => {
+    if (!showPopup) {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      return;
+    }
+
+    countdownTimerRef.current = window.setInterval(() => {
+      setRemainingTime((prev) => {
+        if (prev <= 1) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+    };
+  }, [showPopup]);
+
+  // 시간 종료 시 부가 처리 (녹음 중이면 정지 등)
+  useEffect(() => {
+    if (!showPopup) return;
+    if (remainingTime > 0) return;
+
+    // 시간 끝났으면 녹음/재생 정지
+    if (isRecording && mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        /* noop */
+      }
+      setIsRecording(false);
+      setIsPausedRec(false);
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  }, [remainingTime, showPopup, isRecording]);
+
+  const isTimeOver = remainingTime <= 0;
+
+  // ===== 녹음 타이머 (녹음 중일 때만 증가) =====
   useEffect(() => {
     if (isRecording && !isPausedRec) {
       recordTimerRef.current = window.setInterval(() => setRecordingTime((t) => t + 1), 1000);
@@ -102,6 +164,11 @@ export default function RandomQuestion() {
 
   // ===== 녹음 제어 =====
   const startRecording = async () => {
+    if (isTimeOver) {
+      alert('시간이 종료되어 더 이상 녹음할 수 없습니다.');
+      return;
+    }
+
     try {
       if (recordedAudio) {
         URL.revokeObjectURL(recordedAudio);
@@ -172,6 +239,11 @@ export default function RandomQuestion() {
   };
 
   const handleRetry = () => {
+    if (isTimeOver) {
+      alert('시간이 종료되어 다시 녹음할 수 없습니다.');
+      return;
+    }
+
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -246,6 +318,10 @@ export default function RandomQuestion() {
 
   // ===== 답변 제출 (녹음 업로드 + 피드백 생성) =====
   const handleSubmit = async () => {
+    if (isTimeOver) {
+      alert('시간이 종료되어 답변을 제출할 수 없습니다.');
+      return;
+    }
     if (!questionDetail?.question?.questionId) {
       alert('질문 정보를 불러오지 못했습니다.');
       return;
@@ -259,10 +335,7 @@ export default function RandomQuestion() {
       setIsSubmitting(true);
       const feedback = await uploadFeedbackRecordingAndGetResult(questionDetail.question.questionId, latestAudioBlobRef.current);
 
-      // 일단은 간단히 alert로 AI 피드백만 보여주기
       alert(`AI 피드백이 도착했어요.\n\n${feedback.aiFeedback}`);
-
-      // 필요하면 여기에서 feedback.selfFeedback 등도 활용 가능
       setShowPopup(false);
     } catch (err) {
       console.error('랜덤 팝업 답변 제출 실패:', err);
@@ -280,6 +353,10 @@ export default function RandomQuestion() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
       }
     };
   }, [recordedAudio]);
@@ -328,10 +405,15 @@ export default function RandomQuestion() {
           <p className="text-center text-gray-500 mb-8">질문 정보를 불러오지 못했습니다.</p>
         )}
 
-        {/* 이미지 */}
-        <div className="flex justify-center mb-8">
-          <img src="src/assets/clockFrog.svg" alt="면접관" className="w-32 h-auto" />
+        {/* 이미지 (import 사용) */}
+        <div className="flex justify-center mb-4">
+          <img src={clockFrog} alt="면접관" className="w-32 h-auto" />
         </div>
+
+        {/* 팝업 제한시간 표시 */}
+        <p className="text-center text-sm text-gray-500 mb-4">
+          {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다.` : '시간이 종료되었습니다.'}
+        </p>
 
         {/* 질문 진행바 (디자인 유지용) */}
         <div className="mb-4">
@@ -350,10 +432,13 @@ export default function RandomQuestion() {
                 // 시작 버튼 (마이크 아이콘)
                 <button
                   onClick={startRecording}
-                  className="w-12 h-12 bg-coral-500 hover:bg-coral-600 rounded-full flex items-center justify-center shadow-md transition-colors"
+                  disabled={isTimeOver}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shadow-md transition-colors ${
+                    isTimeOver ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-coral-500 hover:bg-coral-600 text-white'
+                  }`}
                   aria-label="녹음 시작"
                 >
-                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
                     <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
                   </svg>
@@ -431,16 +516,21 @@ export default function RandomQuestion() {
         <div className="flex justify-between items-center">
           <button
             onClick={handleRetry}
-            className="bg-white border border-coral-500 text-coral-500 px-6 py-2 rounded-full text-sm font-medium hover:bg-coral-50 transition-colors"
+            disabled={isTimeOver}
+            className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
+              isTimeOver
+                ? 'bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed'
+                : 'bg-white border border-coral-500 text-coral-500 hover:bg-coral-50'
+            }`}
           >
             다시 녹음하기
           </button>
 
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion}
+            disabled={isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion || isTimeOver}
             className={`px-6 py-3 rounded-xl text-sm font-medium shadow-md transition-colors ${
-              isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion
+              isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion || isTimeOver
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-coral-500 hover:bg-coral-600 text-white'
             }`}
