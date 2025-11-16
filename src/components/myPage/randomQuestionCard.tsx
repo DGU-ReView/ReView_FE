@@ -1,5 +1,3 @@
-import React from 'react';
-
 import OrangeFrog from '@/assets/orangeFrog.svg?react';
 
 type TRandomQuestionCardProps = {
