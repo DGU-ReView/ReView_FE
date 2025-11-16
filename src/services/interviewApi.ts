@@ -88,7 +88,11 @@ export const getRecordingPresignUrl = async (fileName: string): Promise<IPresign
 };
 
 /** 3. S3에 파일 업로드 (프리사인 URL 사용) */
-export const uploadToS3 = async (presignedUrl: string, file: File | Blob, extraHeaders: Record<string, string> = {}): Promise<void> => {
+export const uploadToS3 = async (
+  presignedUrl: string,
+  file: File | Blob,
+  extraHeaders: Record<string, string> = {},
+): Promise<void> => {
   await fetch(presignedUrl, {
     method: 'PUT',
     body: file,
@@ -105,13 +109,18 @@ export const extractResumeId = (resumeKey: string): string => {
 };
 
 /** 4. 자소서 기반 질문 생성 및 첫번째 질문 조회 */
-export const createInterviewSession = async (data: ICreateInterviewSessionRequest): Promise<ICreateInterviewSessionResponse> => {
+export const createInterviewSession = async (
+  data: ICreateInterviewSessionRequest,
+): Promise<ICreateInterviewSessionResponse> => {
   const response = await apiClient.post<ICreateInterviewSessionResponse>('/api/interview-sessions', data);
   return response.data;
 };
 
 /** 5. recording 저장 및 프리질문 생성 (비동기) */
-export const saveRecording = async (questionId: string, data: ISaveRecordingRequest): Promise<ISaveRecordingResponse> => {
+export const saveRecording = async (
+  questionId: string,
+  data: ISaveRecordingRequest,
+): Promise<ISaveRecordingResponse> => {
   const response = await apiClient.post<ISaveRecordingResponse>(`/api/questions/${questionId}/recordings`, data);
   return response.data;
 };
@@ -123,7 +132,11 @@ export const getRecordingResult = async (recordingId: string): Promise<IRecordin
 };
 
 /** 7. Polling 헬퍼 함수 (자동으로 상태 확인) */
-export const pollRecordingResult = async (recordingId: string, maxAttempts: number = 60, interval: number = 5000): Promise<IRecordingResultResponse> => {
+export const pollRecordingResult = async (
+  recordingId: string,
+  maxAttempts: number = 60,
+  interval: number = 5000,
+): Promise<IRecordingResultResponse> => {
   let attempts = 0;
   while (attempts < maxAttempts) {
     const result = await getRecordingResult(recordingId);
