@@ -139,7 +139,7 @@ export const createInterviewSession = async (
     console.log('- interviewType:', data.interviewType);
 
     const resumeId = extractResumeId(data.resumeKey);
-    const mode: InterviewMode = data.interviewType === 'pressure' ? 'HARD' : 'NORMAL';
+    const mode: TInterviewMode = data.interviewType === 'pressure' ? 'HARD' : 'NORMAL';
 
     const payload: ICreateInterviewSessionPayload = {
       mode,
