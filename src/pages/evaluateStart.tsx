@@ -9,7 +9,7 @@ import FormTitle from '@/components/common/FormTitle';
 import O from '@/assets/o.svg?react';
 import X from '@/assets/x.svg?react';
 
-const MIN_BYTES = 100;
+const MIN_CHARS = 100;
 const REQUIRED_SECONDS = 90;
 
 export default function EvaluateStart() {
@@ -53,9 +53,11 @@ export default function EvaluateStart() {
       audio.removeEventListener('ended', handleEnded);
     };
   }, [data?.result.recordingUrl]);
-  const evaluateBytes = new TextEncoder().encode(evaluateText).length;
+  const getCharCount = (text: string) => [...text].length;
 
-  const isLengthOk = evaluateBytes >= MIN_BYTES;
+  const evaluateChars = getCharCount(evaluateText);
+  const isLengthOk = evaluateChars >= MIN_CHARS;
+
   const isTimeOk = elapsedSec >= REQUIRED_SECONDS;
   const canSubmit = isLengthOk && isTimeOk;
 
@@ -97,8 +99,8 @@ export default function EvaluateStart() {
               <audio ref={audioRef} src={data.result.recordingUrl} preload="metadata" />
 
               <button type="button" onClick={handleTogglePlay} className="h-13 w-full rounded-[20px] bg-[#E95F45] px-6 flex items-center gap-6">
-                <div className="flex items-center justify-center rounded-full border-4 border-white w-11 h-11">
-                  <span className="text-white text-lg leading-none">{isPlaying ? '❚❚' : '▶'}</span>
+                <div className="flex items-center justify-center rounded-full border-4 border-white w-8 h-8">
+                  <span className="text-white text-sm leading-none">{isPlaying ? '❚❚' : '▶'}</span>
                 </div>
                 <div className="flex-1 h-1 rounded-full bg-white/50 overflow-hidden">
                   <div className="h-full bg-white transition-[width] duration-150" style={{ width: `${progress}%` }} />
@@ -126,7 +128,7 @@ export default function EvaluateStart() {
               <p>평가 글자수</p>
               <div className="flex items-center gap-2">
                 <p className="text-xs">
-                  {evaluateBytes} / {MIN_BYTES} bytes
+                  {evaluateChars} / {MIN_CHARS} 자
                 </p>
                 {isLengthOk ? <O className="size-5" /> : <X className="size-5" />}
               </div>
