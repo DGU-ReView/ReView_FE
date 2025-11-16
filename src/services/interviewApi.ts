@@ -22,26 +22,16 @@ export interface IResumePresignResponse {
 }
 
 /** 자소서 업로드용 프리사인 URL 발급 */
-export const getResumePresignUrl = async (
-  fileName: string,
-): Promise<IResumePresignResponse> => {
-  const response = await apiClient.post(
-    '/api/presign/resume',
-    null,
-    {
-      params: { fileName },
-    },
-  );
+export const getResumePresignUrl = async (fileName: string): Promise<IResumePresignResponse> => {
+  const response = await apiClient.post('/api/presign/resume', null, {
+    params: { fileName },
+  });
 
   return unwrapResult<IResumePresignResponse>(response.data);
 };
 
 /** S3 공통 업로드 헬퍼 (resume / recording 둘 다 사용) */
-export const uploadToS3 = async (
-  presignedUrl: string,
-  file: File | Blob,
-  extraHeaders: Record<string, string> = {},
-): Promise<void> => {
+export const uploadToS3 = async (presignedUrl: string, file: File | Blob, extraHeaders: Record<string, string> = {}): Promise<void> => {
   const baseHeaders: Record<string, string> = {};
 
   // Blob에 type이 있으면 기본 Content-Type으로 사용
@@ -95,10 +85,10 @@ export const uploadResume = async (file: File): Promise<string> => {
 // =====================================================
 
 /** 프론트에서 쓰는 인터뷰 타입 */
-export type InterviewType = 'normal' | 'pressure';
+export type TInterviewType = 'normal' | 'pressure';
 
 /** BE에서 사용하는 면접 모드 */
-export type InterviewMode = 'NORMAL' | 'HARD';
+export type TInterviewMode = 'NORMAL' | 'HARD';
 
 /** 프론트에서 쓰는 요청 타입 */
 export interface ICreateInterviewSessionRequest {
@@ -107,12 +97,12 @@ export interface ICreateInterviewSessionRequest {
   /** 직무 이름 */
   jobTitle: string;
   /** 'normal' | 'pressure' → NORMAL | HARD 로 매핑 */
-  interviewType: InterviewType;
+  interviewType: TInterviewType;
 }
 
 /** BE에 실제로 보내는 payload (mode / jobRole / resumeId) */
 interface ICreateInterviewSessionPayload {
-  mode: InterviewMode;
+  mode: TInterviewMode;
   jobRole: string;
   resumeId: string;
 }
@@ -210,10 +200,7 @@ export interface IRecordingPresignResponse {
 }
 
 /** 녹음 업로드용 프리사인 URL 발급 */
-export const getRecordingPresignUrl = async (
-  questionId: number,
-  contentType: string,
-): Promise<IRecordingPresignResponse> => {
+export const getRecordingPresignUrl = async (questionId: number, contentType: string): Promise<IRecordingPresignResponse> => {
   const payload: IRecordingPresignRequest = { questionId, contentType };
 
   const response = await apiClient.post('/api/presign/recording', payload);
@@ -225,31 +212,29 @@ export const getRecordingPresignUrl = async (
 // =====================================================
 
 /** 녹음 제출 API 응답 status (현재 스펙상 UPLOADED 고정) */
-export type RecordingEnqueueStatus = 'UPLOADED';
+export type TRecordingEnqueueStatus = 'UPLOADED';
 
 /** 녹음 저장 응답 (POST /api/questions/{questionId}/recordings) */
 export interface ISaveRecordingResponse {
   recordingId: number;
-  status: RecordingEnqueueStatus;
+  status: TRecordingEnqueueStatus;
 }
 
 /** 녹음 저장 및 꼬리질문 생성 API (비동기, 바로 응답) */
-export const saveRecording = async (
-  questionId: number,
-): Promise<ISaveRecordingResponse> => {
+export const saveRecording = async (questionId: number): Promise<ISaveRecordingResponse> => {
   const response = await apiClient.post(`/api/questions/${questionId}/recordings`);
   return unwrapResult<ISaveRecordingResponse>(response.data);
 };
 
 /** Polling API status */
-export type RecordingResultStatus = 'WORKING' | 'READY' | 'FAILED';
+export type TRecordingResultStatus = 'WORKING' | 'READY' | 'FAILED';
 
 /** next.type */
-export type NextQuestionType = 'FOLLOW_UP' | 'ROOT' | 'NONE';
+export type TNextQuestionType = 'FOLLOW_UP' | 'ROOT' | 'NONE';
 
 /** Polling/Timeout 공통 next 객체 타입 */
 export interface IRecordingResultNext {
-  type: NextQuestionType;
+  type: TNextQuestionType;
   nextQuestionId: number | null;
   nextQuestionText: string | null;
   rootId: number | null;
@@ -260,14 +245,12 @@ export interface IRecordingResultNext {
 /** Polling API 응답 타입 (GET /api/recordings/{recordingId}/results) */
 export interface IRecordingResultResponse {
   sessionId: number;
-  status: RecordingResultStatus;
+  status: TRecordingResultStatus;
   next: IRecordingResultNext | null;
 }
 
 /** Polling API - 한 번 조회 */
-export const getRecordingResult = async (
-  recordingId: number,
-): Promise<IRecordingResultResponse> => {
+export const getRecordingResult = async (recordingId: number): Promise<IRecordingResultResponse> => {
   const response = await apiClient.get(`/api/recordings/${recordingId}/results`);
   return unwrapResult<IRecordingResultResponse>(response.data);
 };
@@ -283,21 +266,17 @@ const mapNextToQuestion = (next: IRecordingResultNext | null): IQuestion | null 
   return {
     questionId: String(next.nextQuestionId),
     mainQuestion: isFollowUp
-      ? next.rootText ?? ''           // 꼬리질문이면 rootText를 메인 질문으로
-      : next.nextQuestionText ?? '',  // 루트 질문이면 그대로
+      ? (next.rootText ?? '') // 꼬리질문이면 rootText를 메인 질문으로
+      : (next.nextQuestionText ?? ''), // 루트 질문이면 그대로
     subQuestion: isFollowUp
-      ? next.nextQuestionText ?? ''   // 꼬리질문 텍스트
+      ? (next.nextQuestionText ?? '') // 꼬리질문 텍스트
       : '',
     order: next.rootIndex ?? 0,
   };
 };
 
 /** Polling 헬퍼: READY/FAILED 될 때까지 반복 조회 */
-export const pollRecordingResult = async (
-  recordingId: number,
-  maxAttempts: number = 60,
-  intervalMs: number = 3000,
-): Promise<IRecordingResultResponse> => {
+export const pollRecordingResult = async (recordingId: number, maxAttempts: number = 60, intervalMs: number = 3000): Promise<IRecordingResultResponse> => {
   let attempts = 0;
 
   while (attempts < maxAttempts) {
@@ -322,12 +301,8 @@ export const pollRecordingResult = async (
  * 녹음 파일 업로드 + recording 저장 + polling 후
  * 다음 질문(IQuestion) 혹은 null(세션 종료) 반환
  */
-export const uploadRecordingAndGetNext = async (
-  questionId: string | number,
-  audioBlob: Blob,
-): Promise<IQuestion | null> => {
-  const numericQuestionId =
-    typeof questionId === 'string' ? Number(questionId) : questionId;
+export const uploadRecordingAndGetNext = async (questionId: string | number, audioBlob: Blob): Promise<IQuestion | null> => {
+  const numericQuestionId = typeof questionId === 'string' ? Number(questionId) : questionId;
 
   if (Number.isNaN(numericQuestionId)) {
     throw new Error('유효하지 않은 questionId 입니다.');
@@ -336,10 +311,7 @@ export const uploadRecordingAndGetNext = async (
   const contentType = (audioBlob as any).type || 'audio/webm';
 
   // 1) Presign 발급
-  const { uploadUrl, requiredHeaders } = await getRecordingPresignUrl(
-    numericQuestionId,
-    contentType,
-  );
+  const { uploadUrl, requiredHeaders } = await getRecordingPresignUrl(numericQuestionId, contentType);
 
   // 2) S3 업로드
   await uploadToS3(uploadUrl, audioBlob, requiredHeaders);
@@ -370,9 +342,7 @@ export interface ITimeoutResponse {
 }
 
 /** 사용자가 시간초과로 답변하지 못한 경우 - Timeout API 호출 */
-export const sendTimeout = async (
-  questionId: string | number,
-): Promise<ITimeoutResponse> => {
+export const sendTimeout = async (questionId: string | number): Promise<ITimeoutResponse> => {
   const response = await apiClient.post(`/api/questions/${questionId}/timeout`);
   return unwrapResult<ITimeoutResponse>(response.data);
 };
@@ -382,9 +352,7 @@ export const sendTimeout = async (
  * - next.type === ROOT → 다음 루트 질문
  * - next.type === NONE → 더 이상 질문 없음 (최종 피드백 조회)
  */
-export const timeoutAndGetNextQuestion = async (
-  questionId: string | number,
-): Promise<IQuestion | null> => {
+export const timeoutAndGetNextQuestion = async (questionId: string | number): Promise<IQuestion | null> => {
   const result = await sendTimeout(questionId);
 
   if (!result.next || result.next.type === 'NONE') {
@@ -399,14 +367,14 @@ export const timeoutAndGetNextQuestion = async (
 // =====================================================
 
 /** 피드백 생성 진행 상태 */
-export type FeedbackProgressStatus = 'WORKING' | 'READY' | 'FAILED';
+export type TFeedbackProgressStatus = 'WORKING' | 'READY' | 'FAILED';
 
 /** QnA 턴 타입 */
-export type FeedbackTurnType = 'QUESTION' | 'ANSWER';
+export type TFeedbackTurnType = 'QUESTION' | 'ANSWER';
 
 /** 한 턴 (질문 / 답변) */
 export interface IQnaTurn {
-  turn: FeedbackTurnType;
+  turn: TFeedbackTurnType;
   content: string;
 }
 
@@ -428,8 +396,18 @@ export interface IInterviewSummary {
 
 /** 최종 피드백 조회 응답 */
 export interface IFinalFeedbackResponse {
-  feedbackProgressStatus: FeedbackProgressStatus;
+  feedbackProgressStatus: TFeedbackProgressStatus;
   interviewSummary: IInterviewSummary | null; // WORKING일 때는 null
+  feedbacks: {
+    feedbackType: 'positive' | 'improvement';
+    answer: string;
+    timeout: boolean;
+    feedback: string;
+    questionId: number;
+    question: string;
+  }[];
+  totalQuestions: number;
+  timeoutCount: number;
 }
 
 /** 최종 피드백 조회 (GET /api/interview-sessions/{sessionId}) */

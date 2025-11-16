@@ -2,7 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { formatUpdatedAt } from '@/utils/time';
 
-import usegetCommunityDetail from '@/hooks/useGetCommunityDetail';
+import useGetCommunityDetail from '@/hooks/useGetCommunityDetail';
 
 import type { TValues } from '@/components/community/writeForm';
 import WriteForm from '@/components/community/writeForm';
@@ -12,7 +12,7 @@ import { route } from '@/routes/route';
 export default function CommunityDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { data } = usegetCommunityDetail({ pageId: Number(id) });
+  const { data } = useGetCommunityDetail({ pageId: Number(id) });
   const values: Partial<TValues> = data ?? {};
 
   return (
