@@ -1,35 +1,72 @@
+import { useEffect, useState } from 'react';
+
+import useGetOtherInterview from '@/hooks/useGetOtherInterview';
+import usePostOtherInterview from '@/hooks/usePostOtherInterview';
+
 import CustomInput from '@/components/common/CustomInput';
 import FormTitle from '@/components/common/FormTitle';
 
 import O from '@/assets/o.svg?react';
 import X from '@/assets/x.svg?react';
 
+const MIN_BYTES = 100;
+const REQUIRED_SECONDS = 90;
+
 export default function EvaluateStart() {
-  const text =
-    '회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평가에 도움이 될 수 있는 정보회사/직무/맥락 등 평..........';
+  const { data } = useGetOtherInterview();
+  const { mutate } = usePostOtherInterview();
+
+  const [evaluateText, setEvaluateText] = useState('');
+  const [questionText, setQuestionText] = useState('');
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsedSec((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+  const evaluateBytes = new TextEncoder().encode(evaluateText).length;
+
+  const isLengthOk = evaluateBytes >= MIN_BYTES;
+  const isTimeOk = elapsedSec >= REQUIRED_SECONDS;
+  const canSubmit = isLengthOk && isTimeOk;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+
+    mutate({
+      recordingId: data?.result.recordingId ?? 0,
+      body: evaluateText,
+      followUpQuestion: questionText,
+    });
+  };
+
   return (
     <div className="flex gap-20 w-full min-h-full p-20">
       <div className="flex flex-col gap-4 shrink-0">
         <p className="font-bold text-3xl">EVALUATE</p>
         <p className="font-extralight text-4xl">타인의 면접 봐주기,</p>
       </div>
+
       <div className="w-full bg-[#EEEDF2] rounded-[20px] shadow-[0_7px_24px_0_#24262b44] h-full p-8 flex flex-col gap-8">
-        <section className="bg-white rounded-[20px] p-5 font-normal text-sm">{text}</section>
+        <section className="bg-white rounded-[20px] p-5 font-normal text-sm">이 사용자는 {data?.result.jobRole} 직무를 목표로 준비 중인 면접자입니다.</section>
         <section className="flex flex-col gap-8">
-          <FormTitle text="1. 간단히 자기소개를 해주세요" />
+          <FormTitle text={data?.result.question ?? ''} />
           <div className="h-13 w-full rounded-[15px] bg-[#E95F45] p-2">-</div>
           <div className="flex flex-col gap-3 bg-white rounded-[20px] p-5 font-normal text-sm">
-            <p className="text-xs font-normal text-[#8D8D8D]">누구누구 사용자의 답변</p>
-            {text}
+            <p className="text-xs font-normal text-[#8D8D8D]">{data?.result.jobRole} 직무 사용자의 답변</p>
+            {data?.result.sttText}
           </div>
         </section>
         <section className="flex flex-col gap-8">
           <FormTitle text="평가 입력하기" />
-          <CustomInput placeholder={'평가를 입력해주세요'} />
+          <CustomInput placeholder="평가를 입력해주세요" value={evaluateText} onChange={setEvaluateText} />
         </section>
         <section className="flex flex-col gap-8">
           <FormTitle text="질문 입력하기 (선택)" />
-          <CustomInput placeholder={'30자 이내의 질문을 입력해주세요'} />
+          <CustomInput placeholder="30자 이내의 질문을 입력해주세요" value={questionText} onChange={setQuestionText} />
         </section>
         <section className="flex flex-col gap-8">
           <FormTitle text="평가 조건 충족 여부" />
@@ -37,20 +74,31 @@ export default function EvaluateStart() {
             <div className="w-full h-10 px-4 flex items-center justify-between bg-white text-sm font-normal rounded-[20px]">
               <p>평가 글자수</p>
               <div className="flex items-center gap-2">
-                <p className="text-xs">92 / 100 bytes</p>
-                <X className="size-5" />
+                <p className="text-xs">
+                  {evaluateBytes} / {MIN_BYTES} bytes
+                </p>
+                {isLengthOk ? <O className="size-5" /> : <X className="size-5" />}
               </div>
             </div>
             <div className="w-full h-10 px-4 flex items-center justify-between bg-white font-normal text-sm rounded-[20px]">
               <p className="text-sm">페이지에 머문 시간</p>
               <div className="flex items-center gap-2">
-                <p className="text-xs">90 / 90s</p>
-                <O className="size-5" />
+                <p className="text-xs">
+                  {Math.min(elapsedSec, REQUIRED_SECONDS)} / {REQUIRED_SECONDS}s
+                </p>
+                {isTimeOk ? <O className="size-5" /> : <X className="size-5" />}
               </div>
             </div>
           </div>
         </section>
-        <button className="self-end h-13 mt-10 w-50 bg-[#E95F45] rounded-lg text-white">제출하기</button>
+        <button
+          className={`self-end h-13 mt-10 w-50 rounded-lg text-white font-semibold
+            ${canSubmit ? 'bg-[#E95F45] cursor-pointer' : 'bg-[#D5D5D5] cursor-not-allowed'}`}
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+        >
+          제출하기
+        </button>
       </div>
     </div>
   );

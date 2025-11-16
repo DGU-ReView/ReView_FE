@@ -126,10 +126,11 @@ export default function RandomQuestion() {
     if (mediaRecorderRef.current && isRecording) {
       try {
         mediaRecorderRef.current.stop();
-      } catch {}
+      } catch {
+        setIsRecording(false);
+        setIsPausedRec(false);
+      }
     }
-    setIsRecording(false);
-    setIsPausedRec(false);
   };
 
   const togglePauseRec = () => {
@@ -215,6 +216,12 @@ export default function RandomQuestion() {
     setShowPopup(false);
   };
 
+  const handleGoToInterview = () => {
+    if (isRecording) stopRecording();
+    if (audioRef.current) audioRef.current.pause();
+    navigateTo('/upload');
+    setShowPopup(false);
+  };
   const handleNext = () => {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion((i) => i + 1);
@@ -222,13 +229,6 @@ export default function RandomQuestion() {
       // 마지막이면 면접 페이지로 이동 (기존 동작 유지)
       handleGoToInterview();
     }
-  };
-
-  const handleGoToInterview = () => {
-    if (isRecording) stopRecording();
-    if (audioRef.current) audioRef.current.pause();
-    navigateTo('/upload');
-    setShowPopup(false);
   };
 
   // 정리

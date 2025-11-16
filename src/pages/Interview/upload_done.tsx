@@ -1,5 +1,6 @@
-import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 
 export default function UploadDone() {
@@ -26,19 +27,12 @@ export default function UploadDone() {
       {/* 중앙 컨텐츠 영역 */}
       <div className="flex-1 flex flex-col items-center justify-center">
         <div className="bg-white rounded-3xl shadow-lg p-12 w-full max-w-lg">
-          <p className="text-center text-xl font-medium text-gray-900 mb-4">
-            업로드가 성공적으로 완료되었어요.
-          </p>
+          <p className="text-center text-xl font-medium text-gray-900 mb-4">업로드가 성공적으로 완료되었어요.</p>
           <div className="text-center text-sm text-gray-600 mb-8">
             <p className="font-medium">{file.name}</p>
-            <p className="text-xs text-gray-400 mt-1">
-              {(file.size / 1024).toFixed(2)} KB
-            </p>
+            <p className="text-xs text-gray-400 mt-1">{(file.size / 1024).toFixed(2)} KB</p>
           </div>
-          <button 
-            onClick={handleConfirm}
-            className="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 px-8 rounded-lg transition-colors"
-          >
+          <button onClick={handleConfirm} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 px-8 rounded-lg transition-colors">
             확인
           </button>
         </div>

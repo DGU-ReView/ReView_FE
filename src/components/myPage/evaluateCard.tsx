@@ -1,6 +1,10 @@
 import Frog from '@/assets/frog.svg?react';
 
-export default function EvaluateCard(onClick: () => void) {
+type TEvaluateCardProps = {
+  title: string;
+  onClick: () => void;
+};
+export default function EvaluateCard({ title, onClick }: TEvaluateCardProps) {
   return (
     <div
       onClick={onClick}
@@ -9,13 +13,8 @@ export default function EvaluateCard(onClick: () => void) {
       <div className="flex items-center justify-center gap-1">
         <Frog className="size-25" />
         <div className="flex flex-col gap-0.5 font-medium text-base">
-          <p>
-            <span className="text-[#E95F45]">어쩌구</span> 회사의
-          </p>
-          <p>
-            <span className="text-[#E95F45]">저쩌구</span> 직무의 사용자에게
-          </p>
-          <p>남긴 피드백</p>
+          <p className="text-[#E95F45]">{title}</p>
+          <p> 직무의 사용자에게 남긴 피드백</p>
         </div>
       </div>
     </div>

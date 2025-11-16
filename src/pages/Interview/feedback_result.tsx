@@ -1,13 +1,14 @@
 import { useState } from 'react';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 
-interface QuestionState {
+interface IQuestionState {
   id: number;
   showAnswer: boolean;
 }
 
 export default function FeedbackResult() {
-  const [questionStates, setQuestionStates] = useState<QuestionState[]>([
+  const [questionStates, setQuestionStates] = useState<IQuestionState[]>([
     { id: 1, showAnswer: false },
     { id: 2, showAnswer: false },
     { id: 3, showAnswer: false },
