@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
-import { getFinalFeedback, FinalFeedbackResponse } from '@/services/interviewApi';
+import { getFinalFeedback, type FinalFeedbackResponse, type QuestionSummary, type QnaTurn } from '@/services/interviewApi';
 
 interface IQuestionState {
   id: number;
@@ -50,7 +50,7 @@ export default function FeedbackResult() {
           setFeedbackData(response);
 
           // 질문 상태 초기화
-          const states = response.interviewSummary.questionSummaries.map((_, index) => ({
+          const states = response.interviewSummary.questionSummaries.map((_summary: QuestionSummary, index: number) => ({
             id: index + 1,
             showAnswer: false,
           }));
@@ -145,7 +145,7 @@ export default function FeedbackResult() {
 
         {/* 질문 카드 그리드 */}
         <div className="grid grid-cols-2 gap-6 pb-8">
-          {interviewSummary.questionSummaries.map((summary, index) => {
+          {interviewSummary.questionSummaries.map((summary: QuestionSummary, index: number) => {
             const isShowingAnswer =
               questionStates.find((q) => q.id === index + 1)?.showAnswer || false;
 
@@ -159,8 +159,8 @@ export default function FeedbackResult() {
 
             // 답변 텍스트 (Q&A 턴에서 ANSWER만 추출)
             const answerText = summary.qnaTurns
-              .filter((turn) => turn.turn === 'ANSWER')
-              .map((turn) => turn.content)
+              .filter((turn: QnaTurn) => turn.turn === 'ANSWER')
+              .map((turn: QnaTurn) => turn.content)
               .join('\n\n');
 
             // 타임아웃으로 답변 못한 질문인지 확인
@@ -186,7 +186,7 @@ export default function FeedbackResult() {
                   {isShowingAnswer ? (
                     hasAnswer ? (
                       <div className="space-y-3">
-                        {summary.qnaTurns.map((turn, turnIndex) => (
+                        {summary.qnaTurns.map((turn: QnaTurn, turnIndex: number) => (
                           <div key={turnIndex}>
                             <p className="text-xs font-semibold text-gray-600 mb-1">
                               {turn.turn === 'QUESTION' ? '질문:' : '답변:'}

@@ -18,11 +18,11 @@ export default function UploadDone() {
 
   const handleConfirm = () => {
     // 파일 정보와 resumeKey를 upload-check 페이지로 전달
-    navigate('/upload-check', { 
-      state: { 
+    navigate('/upload-check', {
+      state: {
         file,
         resumeKey, // resumeKey 전달
-      } 
+      },
     });
   };
 
