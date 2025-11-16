@@ -3,12 +3,22 @@ import { useParams } from 'react-router-dom';
 
 import useGetInterviewSummary from '@/hooks/useGetInterviewSummary';
 import useGetQuestionAnswers from '@/hooks/useGetQuestionAnswers';
-import useGetQuestionFeedback from '@/hooks/useGetQuestionFeedback';
 import useGetRandomQuestions from '@/hooks/useGetRandomQuestions';
+import { getQuestionFeedback } from '@/apis/myPage';
+import type { TQuestionFeedbackResponse } from '@/types/myPage';
 
 import ClockFrog from '@/assets/clockFrog.svg?react';
 
 type TabType = 'answer' | 'feedback' | 'random';
+
+type FeedbackItem = {
+  order: number;
+  questionId: number;
+  question: string;
+  aiFeedback: string;
+  selfFeedback: string;
+  peerItems: string[];
+};
 
 export default function MyInterviews() {
   const { id } = useParams<{ id: string }>();
@@ -17,11 +27,12 @@ export default function MyInterviews() {
   const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('answer');
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: summaryData, isLoading: summaryLoading } = useGetInterviewSummary(interviewId);
-  const { data: answersData, isLoading: answersLoading } = useGetQuestionAnswers(activeTab === 'answer' ? selectedQuestionId : null);
-  const { data: feedbackData, isLoading: feedbackLoading } = useGetQuestionFeedback(activeTab === 'feedback' ? selectedQuestionId : null);
+  const { data: answersData, isLoading: answersLoading } = useGetQuestionAnswers(activeTab === 'answer' || activeTab === 'feedback' ? selectedQuestionId : null);
   const { data: randomData, isLoading: randomLoading } = useGetRandomQuestions(activeTab === 'random' ? selectedQuestionId : null);
 
   // 첫 번째 질문 자동 선택
@@ -30,6 +41,49 @@ export default function MyInterviews() {
       setSelectedQuestionId(summaryData.result.questionCards[0].questionId);
     }
   }, [summaryData, selectedQuestionId]);
+
+  // 피드백 탭일 때 모든 질문의 피드백 조회
+  useEffect(() => {
+    if (activeTab === 'feedback' && answersData?.result) {
+      const fetchAllFeedback = async () => {
+        setLoadingFeedback(true);
+        try {
+          const feedbackPromises = answersData.result.map(async (answer) => {
+            try {
+              const feedback = await getQuestionFeedback(answer.questionId);
+              return {
+                order: answer.order,
+                questionId: answer.questionId,
+                question: answer.question,
+                aiFeedback: feedback.result.aiFeedback,
+                selfFeedback: feedback.result.selfFeedback,
+                peerItems: feedback.result.peerItems,
+              };
+            } catch (error) {
+              console.error(`질문 ${answer.questionId} 피드백 조회 실패:`, error);
+              return {
+                order: answer.order,
+                questionId: answer.questionId,
+                question: answer.question,
+                aiFeedback: '',
+                selfFeedback: '',
+                peerItems: [],
+              };
+            }
+          });
+
+          const allFeedback = await Promise.all(feedbackPromises);
+          setFeedbackList(allFeedback);
+        } catch (error) {
+          console.error('피드백 조회 중 오류:', error);
+        } finally {
+          setLoadingFeedback(false);
+        }
+      };
+
+      void fetchAllFeedback();
+    }
+  }, [activeTab, answersData]);
 
   const handleAudioPlay = (url: string) => {
     if (playingAudio === url) {
@@ -69,7 +123,7 @@ export default function MyInterviews() {
   }
 
   const { title, timedOutCount, questionCards } = summaryData.result;
-  const isLoading = answersLoading || feedbackLoading || randomLoading;
+  const isLoading = answersLoading || loadingFeedback || randomLoading;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -176,43 +230,60 @@ export default function MyInterviews() {
                 )}
 
                 {/* 피드백 확인 탭 */}
-                {activeTab === 'feedback' && feedbackData?.result && (
-                  <div className="space-y-6">
-                    {/* AI 피드백 */}
-                    {feedbackData.result.aiFeedback && (
-                      <div className="bg-blue-50 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold text-blue-900 mb-3">🤖 AI 피드백</h3>
-                        <p className="text-gray-700 whitespace-pre-wrap">{feedbackData.result.aiFeedback}</p>
-                      </div>
-                    )}
+                {activeTab === 'feedback' && feedbackList.length > 0 && (
+                  <div className="space-y-4">
+                    {feedbackList.map((item) => (
+                      <div key={item.questionId} className="bg-gray-50 rounded-lg p-5">
+                        <div className="mb-4">
+                          <span className="inline-block bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium mr-2">
+                            질문 {item.order}
+                          </span>
+                          <h3 className="text-lg font-semibold text-gray-900 mt-2">{item.question}</h3>
+                        </div>
 
-                    {/* 셀프 피드백 */}
-                    {feedbackData.result.selfFeedback && (
-                      <div className="bg-green-50 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold text-green-900 mb-3">✍️ 셀프 피드백</h3>
-                        <p className="text-gray-700 whitespace-pre-wrap">{feedbackData.result.selfFeedback}</p>
-                      </div>
-                    )}
+                        <div className="space-y-3">
+                          {/* AI 피드백 */}
+                          {item.aiFeedback && (
+                            <div className="bg-blue-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-blue-900 mb-2">🤖 AI 피드백</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.aiFeedback}</p>
+                            </div>
+                          )}
 
-                    {/* 동료 피드백 */}
-                    {feedbackData.result.peerItems && feedbackData.result.peerItems.length > 0 && (
-                      <div className="bg-purple-50 rounded-lg p-5">
-                        <h3 className="text-lg font-semibold text-purple-900 mb-3">👥 동료 피드백</h3>
-                        <ul className="space-y-2">
-                          {feedbackData.result.peerItems.map((item, index) => (
-                            <li key={index} className="text-gray-700 flex items-start">
-                              <span className="text-purple-500 mr-2">•</span>
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                          {/* 셀프 피드백 */}
+                          {item.selfFeedback && (
+                            <div className="bg-green-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-green-900 mb-2">✍️ 셀프 피드백</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.selfFeedback}</p>
+                            </div>
+                          )}
 
-                    {!feedbackData.result.aiFeedback && !feedbackData.result.selfFeedback && feedbackData.result.peerItems.length === 0 && (
-                      <p className="text-gray-500 italic text-center py-8">피드백이 없습니다.</p>
-                    )}
+                          {/* 동료 피드백 */}
+                          {item.peerItems && item.peerItems.length > 0 && (
+                            <div className="bg-purple-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-purple-900 mb-2">👥 동료 피드백</p>
+                              <ul className="space-y-1">
+                                {item.peerItems.map((peer, index) => (
+                                  <li key={index} className="text-sm text-gray-700 flex items-start">
+                                    <span className="text-purple-500 mr-2">•</span>
+                                    <span>{peer}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {!item.aiFeedback && !item.selfFeedback && item.peerItems.length === 0 && (
+                            <p className="text-gray-500 italic text-sm">이 질문에 대한 피드백이 없습니다.</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+
+                {activeTab === 'feedback' && feedbackList.length === 0 && !loadingFeedback && (
+                  <p className="text-gray-500 italic text-center py-8">피드백이 없습니다.</p>
                 )}
 
                 {/* 랜덤 질문 탭 */}
