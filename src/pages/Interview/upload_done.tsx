@@ -7,20 +7,26 @@ export default function UploadDone() {
   const navigate = useNavigate();
   const location = useLocation();
   const file = location.state?.file as File | undefined;
+  const resumeKey = location.state?.resumeKey as string | undefined; // resumeKey 추가
 
-  // 파일이 없으면 업로드 페이지로 리다이렉트
+  // 파일이나 resumeKey가 없으면 업로드 페이지로 리다이렉트
   useEffect(() => {
-    if (!file) {
+    if (!file || !resumeKey) {
       navigate('/upload', { replace: true });
     }
-  }, [file, navigate]);
+  }, [file, resumeKey, navigate]);
 
   const handleConfirm = () => {
-    // 파일 정보를 upload-check 페이지로 전달
-    navigate('/upload-check', { state: { file } });
+    // 파일 정보와 resumeKey를 upload-check 페이지로 전달
+    navigate('/upload-check', {
+      state: {
+        file,
+        resumeKey, // resumeKey 전달
+      },
+    });
   };
 
-  if (!file) return null;
+  if (!file || !resumeKey) return null;
 
   return (
     <InterviewLayout activeMenu="upload">
