@@ -20,7 +20,7 @@ export function useCoreQuery<TQueryFnData, TData = TQueryFnData>(
 export function useCoreMutation<T, U>(mutation: MutationFunction<T, U>, options?: TUseMutationCustomOptions) {
   return useMutation({
     mutationFn: mutation,
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.response?.data.message || 'An error occurred.');
     },
     ...options,

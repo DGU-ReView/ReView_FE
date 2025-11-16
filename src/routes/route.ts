@@ -8,8 +8,8 @@ export const route = {
   communityEdit: '/community/edit',
   communityDetail: '/community/detail',
   myEvaluate: '/myEvaluate',
-  myInterview: '/myInterview',
   myInterviews: '/myInterviews',
+  upload: '/upload', // ← 추가
   uploadDone: '/upload-done',
   uploadCheck: '/upload-check',
   questionLoading: '/question-loading',

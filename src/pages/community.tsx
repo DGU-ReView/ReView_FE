@@ -81,7 +81,7 @@ export default function Community() {
                   </div>
                 ) : (
                   <Swiper className="flex-1" spaceBetween={50} slidesPerView={slidesPerView} slidesOffsetAfter={50}>
-                    {previews.map(({ id, title }) => (
+                    {previews.map(({ id, title }: any) => (
                       <SwiperSlide key={id}>
                         <CommunityCard title={title} onClick={() => navigate(route.communityDetail + `/${id}`)} />
                       </SwiperSlide>
