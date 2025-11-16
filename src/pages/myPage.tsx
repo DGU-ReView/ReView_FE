@@ -1,182 +1,119 @@
-import { useState, type DragEvent, type ChangeEvent } from 'react';
-import { Upload } from 'lucide-react';
+import 'swiper/css';
+
 import { useNavigate } from 'react-router-dom';
-import InterviewLayout from '@/layouts/InterviewLayout';
-import { uploadResume } from '@/services/interviewApi';
+import { Swiper, SwiperSlide } from 'swiper/react';
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+import AddCard from '@/components/myPage/AddCard';
+import EvaluateCard from '@/components/myPage/evaluateCard';
+import InterviewCard from '@/components/myPage/interviewCard';
+import Tag from '@/components/myPage/tag';
 
-export default function MyInterview() {
+import AngryFrog from '@/assets/angryFrog.svg?react';
+import Frog from '@/assets/frog.svg?react';
+import { route } from '@/routes/route';
+
+type CategoryKey = 'interview' | 'evaluate';
+
+type Category = {
+  key: CategoryKey;
+  title: string;
+  description: string;
+  routes: string;
+};
+
+export default function MyPage() {
   const navigate = useNavigate();
-  const [file, setFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState('파일 업로드');
-  const [dragActive, setDragActive] = useState(false);
-  const [error, setError] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
 
-  const validateFile = (targetFile: File): boolean => {
-    setError('');
+  const categories: Category[] = [
+    {
+      key: 'interview',
+      title: '나의 면접,',
+      description: '그동안의 열정을 모았어요',
+      routes: route.upload, // 업로드 페이지
+    },
+    {
+      key: 'evaluate',
+      title: '나의 평가,',
+      description: '내가 남긴 흔적을 모았어요',
+      routes: route.myEvaluate,
+    },
+  ];
 
-    const extension = '.' + (targetFile.name.split('.').pop() ?? '').toLowerCase();
+  const tags = ['# 문제 해결력', '# 리더십', '# 협업'];
+  const profile = true;
 
-    if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      setError('PDF, DOC, DOCX, TXT 파일만 업로드 가능합니다.');
-      return false;
-    }
-
-    if (targetFile.size > MAX_FILE_SIZE) {
-      setError('파일 크기는 10MB를 초과할 수 없습니다.');
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleDrag = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const selectedFile = e.dataTransfer.files[0];
-
-      if (validateFile(selectedFile)) {
-        setFile(selectedFile);
-        setFileName(selectedFile.name);
-      }
-    }
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-
-      if (validateFile(selectedFile)) {
-        setFile(selectedFile);
-        setFileName(selectedFile.name);
-      }
-    }
-  };
-
-  const handleBoxClick = () => {
-    document.getElementById('file-upload')?.click();
-  };
-
-  const handleSubmit = async () => {
-    if (!file) {
-      setError('파일을 선택해주세요.');
-      return;
-    }
-
-    setIsUploading(true);
-    setError('');
-
-    try {
-      console.log('📁 자소서 업로드 시작:', file.name);
-
-      const fileKey = await uploadResume(file);
-
-      console.log('✅ 자소서 업로드 성공! fileKey:', fileKey);
-
-      navigate('/upload-done', {
-        state: {
-          file,
-          fileName,
-          resumeKey: fileKey,
-        },
-      });
-    } catch (err) {
-      console.error('❌ 자소서 업로드 실패:', err);
-      setError('파일 업로드에 실패했습니다. 다시 시도해주세요.');
-    } finally {
-      setIsUploading(false);
-    }
+  const movePage = (routes: string, id: number) => {
+    // id는 1부터 시작하도록 +1
+    navigate(`${routes}/${id + 1}`);
   };
 
   return (
-    <InterviewLayout activeMenu="upload">
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <p className="text-gray-700 text-lg mb-8">자소서를 업로드해주세요.</p>
-
-        {error && (
-          <div className="w-full max-w-md mb-4">
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          </div>
-        )}
-
-        <div className="w-full max-w-md space-y-4">
-          <div
-            onClick={handleBoxClick}
-            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer ${
-              dragActive ? 'border-coral-400 bg-coral-50' : error ? 'border-red-300 bg-red-50' : 'border-coral-300 bg-white'
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <div className="flex items-center justify-between">
-              <span className={file ? 'text-gray-700' : 'text-coral-500'}>{isUploading ? '업로드 중...' : fileName}</span>
-              <Upload className="w-5 h-5 text-coral-500" />
-              <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.doc,.docx,.txt" disabled={isUploading} />
+    <div className="flex flex-col gap-20 py-15">
+      {/* 프로필 영역 */}
+      <section className="w-full flex justify-center">
+        <div className="flex flex-col w-fit gap-8">
+          <p className="text-3xl font-bold">나의 프로필,</p>
+          <div className="flex items-center">
+            {profile ? <Frog className="size-80" /> : <AngryFrog className="size-80" />}
+            <div className="bg-white/20 rounded-[20px] h-75 w-120 border border-[#F1F1F1] p-8 flex flex-col justify-between">
+              {profile ? (
+                <section className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xl font-extrabold text-[#333333]">경험 강조 분야</p>
+                    <div className="flex items-center gap-3">
+                      {tags.map((text, idx) => (
+                        <Tag text={text} key={idx} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xl font-extrabold text-[#333333]">발전 필요 역량</p>
+                    <div className="flex items-center gap-3">
+                      {tags.map((text, idx) => (
+                        <Tag text={text} key={idx} />
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <p className="text-[#E95F45] text-lg font-medium">프로필이 아직 없습니다</p>
+              )}
+              <div className="cursor-pointer self-end">
+                <Tag text={profile ? '수정하기' : '작성하기'} />
+              </div>
             </div>
           </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!file || isUploading}
-            className={`w-full font-medium py-4 rounded-2xl transition-colors ${
-              file && !isUploading ? 'bg-coral-400 hover:bg-coral-500 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {isUploading ? '업로드 중...' : '제출하기'}
-          </button>
         </div>
       </section>
+
+      {/* 카드 슬라이더 영역 */}
       <section className="flex flex-col gap-8">
-        {categories.map(({ title, description, routes, categoryData }, idx) => {
-          const items = categoryData?.result.items ?? [];
-          const totalSlides = items.length + 1;
-          const slidesPerView = totalSlides >= 3 ? 2.7 : totalSlides || 1;
-
-          return (
-            <div className="h-75 w-full flex gap-25" key={idx}>
-              <div className="shrink-0 pl-20 flex flex-col gap-2.5">
-                <p className="bg-[#E95F45]/20 px-1 w-fit rounded text-2xl font-bold">{title}</p>
-                <p className="text-lg font-extralight">{description}</p>
-              </div>
-              <Swiper spaceBetween={50} slidesPerView={slidesPerView}>
-                <SwiperSlide key="add-card" className="!mr-14">
-                  <AddCard onClick={() => window.location.replace(title === '나의 면접,' ? route.myInterview : route.evaluate)} />
-                </SwiperSlide>
-
-                {title === '나의 면접,'
-                  ? myInterviewData?.result.items.map(({ interviewId, jobRole }) => (
-                      <SwiperSlide key={interviewId}>
-                        <InterviewCard id={interviewId} title={jobRole} onClick={() => movePage(routes, interviewId)} />
-                      </SwiperSlide>
-                    ))
-                  : myFeedbackData?.result.items.map(({ peerFeedbackId, title: jobTitle }) => (
-                      <SwiperSlide key={peerFeedbackId}>
-                        <EvaluateCard title={jobTitle} onClick={() => movePage(routes, peerFeedbackId)} />
-                      </SwiperSlide>
-                    ))}
-              </Swiper>
+        {categories.map(({ title, description, routes, key }, idx) => (
+          <div className="h-75 w-full flex gap-25" key={idx}>
+            <div className="shrink-0 pl-20 flex flex-col gap-2.5">
+              <p className="bg-[#E95F45]/20 px-1 w-fit rounded text-2xl font-bold">{title}</p>
+              <p className="text-lg font-extralight">{description}</p>
             </div>
-          );
-        })}
+
+            <Swiper spaceBetween={50} slidesPerView={2.7} slidesOffsetAfter={50}>
+              {/* + 카드 */}
+              <SwiperSlide key="add-card">
+                <AddCard onClick={() => navigate(routes)} />
+              </SwiperSlide>
+
+              {/* 더미 카드 4개 */}
+              {[...Array(4)].map((_, i) => (
+                <SwiperSlide key={i}>
+                  {key === 'interview' ? (
+                    <InterviewCard id={i + 1} title={`면접 ${i + 1}`} onClick={() => movePage(routes, i)} />
+                  ) : (
+                    <EvaluateCard title={`평가 ${i + 1}`} onClick={() => movePage(routes, i)} />
+                  )}
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          </div>
+        ))}
       </section>
     </div>
   );
