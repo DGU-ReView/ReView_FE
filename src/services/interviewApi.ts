@@ -189,14 +189,23 @@ export const getFinalFeedback = async (
  */
 export const uploadResume = async (file: File): Promise<string> => {
   try {
-    // 1단계: Presigned URL 받기
-    console.log('🚀 1단계 - Presigned URL 요청:', file.name);
+    // 파일명 유효성 검사
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['pdf', 'docx'].includes(extension)) {
+      throw new Error('PDF 또는 DOCX 파일만 업로드 가능합니다.');
+    }
 
+    // 1단계: Presigned URL 받기 (Query Parameter 방식으로 변경!)
+    console.log('🚀 1단계 - Presigned URL 요청:', file.name);
+    
     const presignResponse = await apiClient.post<ResumePresignResponse>(
       '/api/presign/resume',
+      null,  // ← body는 null
       {
-        fileName: file.name,
-      },
+        params: {  // ← params 옵션으로 Query Parameter 전달
+          fileName: file.name
+        }
+      }
     );
 
     console.log('✅ Presigned URL 발급 성공');
@@ -209,7 +218,7 @@ export const uploadResume = async (file: File): Promise<string> => {
     const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
-        ...requiredHeaders, // Content-Type 등 필수 헤더
+        ...requiredHeaders,
       },
       body: file,
     });
