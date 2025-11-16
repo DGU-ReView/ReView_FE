@@ -1,3 +1,4 @@
+// src/services/randomQuestionApi.ts
 import apiClient from './api';
 import { EventSourcePolyfill } from 'event-source-polyfill';
 
@@ -9,10 +10,9 @@ const unwrapResult = <T>(data: any): T => {
   return data as T;
 };
 
-const joinUrl = (base = '', path = '') =>
-  `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
-
 // ---------------------- 타입 정의 ----------------------
+
+// 1) SSE 알림 payload
 export interface IRandomNotificationPayload {
   jobName: string;
   interviewName: string;
@@ -20,6 +20,7 @@ export interface IRandomNotificationPayload {
   peerFeedbackId: number; // = peerAnswerId
 }
 
+// 2) 랜덤 팝업 질문 조회 응답
 export interface IRandomQuestionContext {
   questionId: number;
   questionText: string;
@@ -31,17 +32,20 @@ export interface IRandomQuestion {
   context: IRandomQuestionContext;
 }
 
+// 3) presign 응답
 export interface IPresignUrlResponse {
   uploadUrl: string;
   key: string;
   requiredHeaders: Record<string, string>;
 }
 
+// 4) 녹음 저장 응답
 export interface IFeedbackRecordingResponse {
   recordingId: number;
   status: 'UPLOADED';
 }
 
+// 5) 피드백 조회 응답
 export type TFeedbackProgressStatus = 'WORKING' | 'READY' | 'FAILED';
 export interface IFeedbackResult {
   questionId: number;
@@ -63,19 +67,17 @@ export const getRandomQuestion = async (
   peerAnswerId: number | string,
   opts?: { noCache?: boolean; signal?: AbortSignal },
 ): Promise<IRandomQuestion> => {
-  const params = opts?.noCache ? { _ts: Date.now() } : undefined; // 캐시 우회
-  // 디버깅 로그
+  const params = opts?.noCache ? { _ts: Date.now() } : undefined;
+
+  // 디버깅 참고 로그
   // eslint-disable-next-line no-console
-  console.log('[RQ] GET random question', { peerAnswerId, params });
+  console.log('[RQ] GET /api/random-questions/peer/:id', { peerAnswerId, params });
 
   const resp = await apiClient.get(`/api/random-questions/peer/${peerAnswerId}`, {
     params,
     signal: opts?.signal as any,
     headers: opts?.noCache
-      ? {
-          'Cache-Control': 'no-cache',
-          Pragma: 'no-cache',
-        }
+      ? { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
       : undefined,
   });
   return unwrapResult<IRandomQuestion>(resp.data);
@@ -150,49 +152,46 @@ export const pollFeedbackResult = async (
 
 /**
  * 7. SSE 구독
- *  - 기본 경로를 'subscribe'로 두고, baseURL이 '/api'면 최종 '/api/subscribe'
- *  - 절대주소(https://...)가 오면 그대로 사용
+ * - 기본 경로: /api/subscribe (VITE_SSE_PATH로 오버라이드 가능)
+ * - baseURL 및 path가 모두 /api를 포함해도 중복되지 않도록 정규화
+ * - 절대 URL이 오면 그대로 사용
  */
 export const subscribeToNotifications = (
   onMessage: (event: MessageEvent<string>) => void,
   onError?: (error: unknown) => void,
 ): EventSource => {
-  const base = apiClient.defaults.baseURL ?? ''; // ex) 'https://api.re-view-me.shop' 또는 '/api'
-  // 기본 경로를 '/api/subscribe'로 고정(ENV로 덮어쓸 수 있음)
-  const rawPath = import.meta.env.VITE_SSE_PATH ?? '/api/subscribe';
+  const base = apiClient.defaults.baseURL ?? ''; // 예: '', '/api', 'https://api.domain.com', 'https://api.domain.com/api'
+  let path = import.meta.env.VITE_SSE_PATH ?? '/api/subscribe';
 
-  const buildSseUrl = (baseUrl: string, p: string) => {
-    // 절대 URL이면 그대로 사용
-    if (/^https?:\/\//.test(p)) return p;
+  // 절대 경로면 그대로 사용
+  if (/^https?:\/\//.test(path)) {
+    // eslint-disable-next-line no-console
+    console.log('[SSE] connect (absolute)', { url: path, hasToken: !!localStorage.getItem('accessToken') });
+    return new (EventSourcePolyfill as any)(
+      appendToken(path),
+      esOptions(),
+    ) as EventSource;
+  }
 
-    // base가 .../api, path가 /api/... 인 경우 중복 api 제거
-    const baseHasApi = /\/api\/?$/.test(baseUrl);
-    const pathHasApi = /^\/?api\//.test(p);
-    let path = p;
-    if (baseHasApi && pathHasApi) {
-      path = p.replace(/^\/?api\//, ''); // 선두 api/ 제거
-    }
-    // join
-    const normBase = baseUrl.replace(/\/+$/, '');
-    const normPath = path.replace(/^\/+/, '');
-    return `${normBase}/${normPath}`;
-  };
+  // base와 path 모두 상대라면 안전하게 합치기
+  const normBase = (base || '').replace(/\/+$/, '');     // 끝 슬래시 제거
+  let normPath = path.replace(/^\/+/, '/');              // 앞 슬래시는 하나만 유지
 
-  const url = buildSseUrl(base, rawPath);
+  // base가 /api 로 끝나고, path가 /api/...로 시작하면 path의 선두 /api 제거
+  if (/\/api$/.test(normBase) && /^\/api\//.test(normPath)) {
+    normPath = normPath.replace(/^\/api/, '');
+  }
 
-  const token = localStorage.getItem('accessToken') ?? '';
+  // 최종 URL
+  const finalUrl = `${normBase}${normPath.startsWith('/') ? '' : '/'}${normPath || ''}` || '/api/subscribe';
 
-  // 디버깅 로그
+  // 디버깅
   // eslint-disable-next-line no-console
-  console.log('[SSE] connect', { url, base, rawPath, hasToken: !!token });
+  console.log('[SSE] connect', { base: normBase || '(relative)', rawPath: path, url: finalUrl, hasToken: !!localStorage.getItem('accessToken') });
 
   const es = new (EventSourcePolyfill as any)(
-    token ? `${url}?token=${encodeURIComponent(token)}` : url,
-    {
-      withCredentials: true,
-      heartbeatTimeout: 120_000,
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    },
+    appendToken(finalUrl),
+    esOptions(),
   ) as EventSource;
 
   (es as any).onmessage = onMessage;
@@ -201,8 +200,24 @@ export const subscribeToNotifications = (
   return es;
 };
 
+// 토큰을 쿼리스트링으로 추가(백엔드가 허용하는 경우)
+function appendToken(url: string) {
+  const token = localStorage.getItem('accessToken') ?? '';
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
+}
 
-// ---------------------- 전체 플로우 ----------------------
+function esOptions() {
+  const token = localStorage.getItem('accessToken') ?? '';
+  return {
+    withCredentials: true,
+    heartbeatTimeout: 120_000,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  };
+}
+
+// ---------------------- 업로드 → 피드백 전체 플로우 ----------------------
 
 export const uploadFeedbackRecordingAndGetResult = async (
   questionId: number,
