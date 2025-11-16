@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
+import type { IFeedbackItem, IFinalFeedbackResponse } from '@/services/interviewApi';
 import { getFinalFeedback } from '@/services/interviewApi';
-import type { FinalFeedbackResponse, FeedbackItem } from '@/services/interviewApi';
 
 interface IQuestionState {
   id: number;
@@ -16,30 +16,23 @@ export default function FeedbackResult() {
   const location = useLocation() as { state?: { sessionId?: string } };
   const { sessionId } = location.state || {};
 
-  const [feedbackData, setFeedbackData] = useState<FinalFeedbackResponse | null>(null);
+  const [feedbackData, setFeedbackData] = useState<IFinalFeedbackResponse | null>(null);
   const [questionStates, setQuestionStates] = useState<IQuestionState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 피드백 조회
   useEffect(() => {
     if (!sessionId) {
       alert('세션 정보가 없습니다.');
       navigate('/upload');
       return;
     }
-
     const fetchFeedback = async () => {
       try {
         setIsLoading(true);
         const response = await getFinalFeedback(sessionId);
         setFeedbackData(response);
-
-        // 질문 상태 초기화: 피드백 항목 수 기준
-        const states = response.feedbacks.map((_, index) => ({
-          id: index + 1,
-          showAnswer: false,
-        }));
+        const states = response.feedbacks.map((_, idx) => ({ id: idx + 1, showAnswer: false }));
         setQuestionStates(states);
       } catch (err) {
         console.error('❌ 피드백 조회 실패:', err);
@@ -48,15 +41,13 @@ export default function FeedbackResult() {
         setIsLoading(false);
       }
     };
-
     void fetchFeedback();
-  }, [sessionId, navigate]);
+  }, [navigate, sessionId]);
 
   const toggleAnswer = (id: number) => {
     setQuestionStates((prev) => prev.map((q) => (q.id === id ? { ...q, showAnswer: !q.showAnswer } : q)));
   };
 
-  // 로딩 중
   if (isLoading) {
     return (
       <InterviewLayout activeMenu="feedback">
@@ -73,7 +64,6 @@ export default function FeedbackResult() {
     );
   }
 
-  // 에러
   if (error || !feedbackData) {
     return (
       <InterviewLayout activeMenu="feedback">
@@ -93,9 +83,7 @@ export default function FeedbackResult() {
 
   return (
     <InterviewLayout activeMenu="feedback">
-      {/* 중앙 컨텐츠 영역 */}
       <div className="flex-1 px-8 pt-4">
-        {/* 상단 정보 */}
         <div className="mb-6">
           <h2 className="text-2xl font-semibold text-gray-900 mb-3">
             <span className="inline-block bg-gray-400 text-white px-4 py-1 rounded-full text-sm mr-2">총 {totalQuestions}문항</span>에 대한 최종 피드백
@@ -108,11 +96,9 @@ export default function FeedbackResult() {
           )}
         </div>
 
-        {/* 질문 카드 그리드 */}
         <div className="grid grid-cols-2 gap-6 pb-8">
-          {feedbacks.map((item: FeedbackItem, index: number) => {
+          {feedbacks.map((item: IFeedbackItem, index: number) => {
             const isShowingAnswer = questionStates.find((q) => q.id === index + 1)?.showAnswer || false;
-
             const isPositive = item.feedbackType === 'positive';
             const feedbackTypeLabel = isPositive ? 'AI 피드백(긍정)' : 'AI 피드백(개선)';
             const hasAnswer = !!item.answer && item.answer.trim().length > 0;
@@ -122,7 +108,6 @@ export default function FeedbackResult() {
                 key={`${item.questionId}-${index}`}
                 className={`rounded-2xl p-6 shadow-sm transition-colors ${isShowingAnswer ? 'bg-gray-200' : 'bg-white'}`}
               >
-                {/* 카드 헤더 */}
                 <div className="mb-4">
                   <h3 className="font-semibold text-gray-900 mb-2">
                     {index + 1}. {item.question}
@@ -130,7 +115,6 @@ export default function FeedbackResult() {
                   <p className="text-sm text-gray-500">{feedbackTypeLabel}</p>
                 </div>
 
-                {/* 카드 내용 (스크롤 가능) */}
                 <div className="mb-4 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                   {isShowingAnswer ? (
                     hasAnswer ? (
@@ -150,7 +134,6 @@ export default function FeedbackResult() {
                   )}
                 </div>
 
-                {/* 버튼 */}
                 <div className="flex justify-end">
                   <button
                     onClick={() => toggleAnswer(index + 1)}
@@ -171,8 +154,6 @@ export default function FeedbackResult() {
         .bg-coral-500 { background-color: #ff7f66; }
         .bg-coral-600 { background-color: #ff6b52; }
         .hover\\:bg-coral-600:hover { background-color: #ff6b52; }
-
-        /* 스크롤바 스타일링 */
         .scrollbar-thin::-webkit-scrollbar { width: 6px; }
         .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb { background-color: #d1d5db; border-radius: 3px; }
         .scrollbar-track-gray-100::-webkit-scrollbar-track { background-color: #f3f4f6; border-radius: 3px; }

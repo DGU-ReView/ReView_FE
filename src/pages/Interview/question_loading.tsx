@@ -1,23 +1,22 @@
-﻿// src/pages/Interview/question_loading.tsx
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
-
+import type { ICreateInterviewSessionResponse } from '@/services/interviewApi';
 import { createInterviewSession } from '@/services/interviewApi';
-import type { CreateInterviewSessionResponse } from '@/services/interviewApi';
 
-const ANSWER_ROUTE = '/main-answer'; // 프로젝트 라우트에 맞게 조정하세요
+const ANSWER_ROUTE = '/main-answer'; // 프로젝트 라우트에 맞게 조정
+
+type TLocationState = {
+  fileName?: string;
+  jobTitle?: string;
+  interviewType?: 'normal' | 'pressure';
+  resumeKey?: string; // S3 key
+};
 
 export default function QuestionLoading() {
   const navigate = useNavigate();
-  const location = useLocation() as {
-    state?: {
-      fileName?: string;
-      jobTitle?: string;
-      interviewType?: 'normal' | 'pressure';
-      resumeKey?: string; // S3 key
-    };
-  };
+  const location = useLocation() as { state?: TLocationState };
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -33,11 +32,11 @@ export default function QuestionLoading() {
           return;
         }
 
-        // 스펙에 맞게 그대로 전송
-        const resp: CreateInterviewSessionResponse = await createInterviewSession({
+        // 스펙에 맞게 요청
+        const resp: ICreateInterviewSessionResponse = await createInterviewSession({
           resumeKey,
           jobTitle,
-          interviewType, // 'normal' | 'pressure'
+          interviewType,
         });
 
         // 성공 → 답변 페이지로 이동 (필요값 전달)
@@ -84,10 +83,7 @@ export default function QuestionLoading() {
 
       <style>{`
         .bg-coral-500 { background-color: #ff7f66; }
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-20px); }
-        }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
         .animate-bounce { animation: bounce 0.6s ease-in-out infinite; }
       `}</style>
     </InterviewLayout>

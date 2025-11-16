@@ -1,10 +1,10 @@
 // src/pages/Interview/main_answer.tsx
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import InterviewLayout from '@/layouts/InterviewLayout';
 
-import { uploadRecordingAndGetNext, sendTimeout } from '@/services/interviewApi';
-import type { Question } from '@/services/interviewApi';
+import InterviewLayout from '@/layouts/InterviewLayout';
+import type { IQuestion } from '@/services/interviewApi';
+import { sendTimeout, uploadRecordingAndGetNext } from '@/services/interviewApi';
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ export default function AnswerQuestion() {
       interviewType?: 'normal' | 'pressure';
       resumeKey?: string;
       sessionId?: string;
-      firstQuestion?: Question;
+      firstQuestion?: IQuestion;
       fromLoading?: boolean;
     };
   };
@@ -23,7 +23,7 @@ export default function AnswerQuestion() {
   const { fileName = '자소서', jobTitle, interviewType = 'normal', resumeKey, sessionId, firstQuestion } = location.state || {};
 
   /** ---------------- 상태 ---------------- */
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(firstQuestion ?? null);
+  const [currentQuestion, setCurrentQuestion] = useState<IQuestion | null>(firstQuestion ?? null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
   // 탭(질문{order}) – 서버에서 오는 Question.order를 기반으로 생성/유지
@@ -53,13 +53,58 @@ export default function AnswerQuestion() {
   useEffect(() => {
     if (!firstQuestion) {
       // question_loading에서 세션 생성 후 오도록 설계됨
-      // 직접 접근 시엔 안정적으로 뒤로 돌림
       navigate('/question-loading', {
         replace: true,
         state: { fileName, jobTitle, interviewType, resumeKey },
       });
     }
+    // 의도적으로 최초 마운트 시에만 검증
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** ---------------- 공통 초기화 함수(호출 위치보다 위 선언) ---------------- */
+  function resetForNext() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setPlaybackTime(0);
+    setPlaybackDuration(0);
+    setRecordedAudioUrl(null);
+    latestAudioBlobRef.current = null;
+    setRecordingTime(0);
+    setRemainingTime(180);
+    setRetryCount(1);
+  }
+
+  /** ---------------- 녹음 중지 / 타임아웃 핸들러 (deps 안전) ---------------- */
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        /* noop */
+      }
+      setIsRecording(false);
+      setIsPaused(false);
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [isRecording]);
+
+  const handleTimeout = useCallback(async (questionId: string) => {
+    try {
+      await sendTimeout(questionId);
+      // 현재 스펙에선 sendTimeout이 다음 질문을 주지 않으므로 종료 처리
+      resetForNext();
+      setShowCompleteModal(true);
+    } catch (e) {
+      console.error('시간초과 처리 실패:', e);
+      alert('시간초과 처리에 실패했습니다.');
+    }
   }, []);
 
   /** ---------------- 타이머 ---------------- */
@@ -70,7 +115,6 @@ export default function AnswerQuestion() {
         setRemainingTime((prev) => {
           if (prev <= 1) {
             stopRecording();
-            // 현재 스펙에선 sendTimeout이 nextQuestion을 돌려주지 않으므로 완료 처리
             if (currentQuestion?.questionId) {
               void handleTimeout(currentQuestion.questionId);
             }
@@ -90,7 +134,7 @@ export default function AnswerQuestion() {
         timerRef.current = null;
       }
     };
-  }, [isRecording, isPaused, currentQuestion?.questionId]);
+  }, [isRecording, isPaused, currentQuestion?.questionId, stopRecording, handleTimeout]);
 
   /** ---------------- 녹음 제어 ---------------- */
   const startRecording = async () => {
@@ -134,22 +178,6 @@ export default function AnswerQuestion() {
     } catch (error) {
       console.error('마이크 접근 오류:', error);
       alert('마이크 접근 권한이 필요합니다.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {
-        /* noop */
-      }
-      setIsRecording(false);
-      setIsPaused(false);
-    }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
     }
   };
 
@@ -232,23 +260,7 @@ export default function AnswerQuestion() {
   }, [recordedAudioUrl, recordingTime]);
 
   /** ---------------- 다음 질문 ---------------- */
-  const resetForNext = () => {
-    // 재생/녹음 상태 초기화
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setIsPlaying(false);
-    setPlaybackTime(0);
-    setPlaybackDuration(0);
-    setRecordedAudioUrl(null);
-    latestAudioBlobRef.current = null;
-    setRecordingTime(0);
-    setRemainingTime(180);
-    setRetryCount(1);
-  };
-
-  const applyNext = (next: Question | null) => {
+  const applyNext = (next: IQuestion | null) => {
     if (!next) {
       setShowCompleteModal(true);
       return;
@@ -277,25 +289,11 @@ export default function AnswerQuestion() {
     }
   };
 
-  const handleTimeout = async (questionId: string) => {
-    try {
-      await sendTimeout(questionId);
-      // 현재 스펙에선 sendTimeout이 다음 질문을 주지 않으므로 종료 처리
-      resetForNext();
-      setShowCompleteModal(true);
-    } catch (e) {
-      console.error('시간초과 처리 실패:', e);
-      alert('시간초과 처리에 실패했습니다.');
-    }
-  };
-
-  /** ---------------- 탭 이동(보여주기 용도) ---------------- */
-  const handleOrderTabClick = (order: number) => {
-    void order;
-    // 서버가 특정 order의 질문을 다시 불러오는 API를 제공하지 않음,.
-    // 탭은 보여주기 용도로 유지. (실제 질문 이동은 서버 응답에 따라갈 것)
-    // 필요 시 여기서 과거 질문 로깅/캐싱 구현 가능.
-  };
+  /** ---------------- 탭 이동(표시용) ---------------- */
+  const handleOrderTabClick = useCallback(() => {
+    // 서버가 특정 order의 과거 질문을 다시 불러오는 API를 제공하지 않음.
+    // 탭은 "표시용"으로 유지.
+  }, []);
 
   /** ---------------- 기타 ---------------- */
   const handleFinalFeedback = () => {
@@ -329,7 +327,7 @@ export default function AnswerQuestion() {
           {ordersSeen.map((o) => (
             <button
               key={o}
-              onClick={() => handleOrderTabClick(o)}
+              onClick={handleOrderTabClick}
               className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
                 currentQuestion?.order === o
                   ? 'bg-white border-2 border-coral-500 text-coral-500'
