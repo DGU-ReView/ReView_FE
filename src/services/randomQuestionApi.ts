@@ -1,4 +1,5 @@
 import apiClient from './api';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 
 // result만 뽑아주는 헬퍼
 const unwrapResult = <T>(data: any): T => {
@@ -178,7 +179,9 @@ export const subscribeToNotifications = (
   onError?: (error: Event) => void,
 ): EventSource => {
   const baseURL = apiClient.defaults.baseURL ?? '';
-  const eventSource = new EventSource(`${baseURL}/api/subscribe`);
+  const eventSource = new EventSourcePolyfill(`${baseURL}/api/subscribe`, {
+    withCredentials: true,
+  }) as EventSource;
 
   eventSource.onmessage = onMessage;
 
