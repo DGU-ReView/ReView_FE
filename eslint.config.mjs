@@ -8,6 +8,8 @@ import importConfig from './eslint/import.mjs';
 import reactConfig from './eslint/react.mjs';
 import tsConfig from './eslint/typescript.mjs';
 
+import reactHooks from 'eslint-plugin-react-hooks';
+
 export default [
   {
     ignores: ['src/vite-env.d.ts'],
@@ -41,5 +43,14 @@ export default [
   defaultConfig,
   importConfig,
   reactConfig,
+  
+  {
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+
   prettierPluginRecommended,
 ];

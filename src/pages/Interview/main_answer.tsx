@@ -1,63 +1,113 @@
-import { useEffect, useRef, useState } from 'react';
+// src/pages/Interview/main_answer.tsx
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
-
-interface IQuestion {
-  id: number;
-  main: string;
-  sub: string;
-}
+import type { IQuestion } from '@/services/interviewApi';
+import { sendTimeout, uploadRecordingAndGetNext } from '@/services/interviewApi';
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { fileName = '2025년_3월_자소서' } = location.state || {};
+  const location = useLocation() as {
+    state?: {
+      fileName?: string;
+      jobTitle?: string;
+      interviewType?: 'normal' | 'pressure';
+      resumeKey?: string;
+      sessionId?: string;
+      firstQuestion?: IQuestion;
+      fromLoading?: boolean;
+    };
+  };
 
-  const [currentQuestion, setCurrentQuestion] = useState(1);
+  const { fileName = '자소서', jobTitle, interviewType = 'normal', resumeKey, sessionId, firstQuestion } = location.state || {};
+
+  /** ---------------- 상태 ---------------- */
+  const [currentQuestion, setCurrentQuestion] = useState<IQuestion | null>(firstQuestion ?? null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+
+  // 탭(질문{order}) – 서버에서 오는 Question.order를 기반으로 생성/유지
+  const [ordersSeen, setOrdersSeen] = useState<number[]>(firstQuestion ? [firstQuestion.order] : []);
 
   // 녹음 관련 상태
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [remainingTime, setRemainingTime] = useState(180); // 3분 = 180초
+  const [remainingTime, setRemainingTime] = useState(180);
   const [retryCount, setRetryCount] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const latestAudioBlobRef = useRef<Blob | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  // 재생 관련 상태/참조 (실시간 진행 상황)
+  // 재생
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
 
-  const questions: IQuestion[] = [
-    { id: 1, main: '메인질문', sub: '간단히 자기소개를 해주세요.' },
-    { id: 2, main: '메인질문', sub: '이 직무를 선택한 이유는 무엇인가요?' },
-    { id: 3, main: '메인질문', sub: '본인의 강점은 무엇이라고 생각하나요?' },
-    { id: 4, main: '메인질문', sub: '입사 후 목표는 무엇인가요?' },
-  ];
+  /** ---------------- 초기 유효성 ---------------- */
+  useEffect(() => {
+    if (!firstQuestion) {
+      // question_loading에서 세션 생성 후 오도록 설계됨
+      navigate('/question-loading', {
+        replace: true,
+        state: { fileName, jobTitle, interviewType, resumeKey },
+      });
+    }
+    // 의도적으로 최초 마운트 시에만 검증
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // 녹음 중지
-  const stopRecording = () => {
+  /** ---------------- 공통 초기화 함수(호출 위치보다 위 선언) ---------------- */
+  function resetForNext() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setPlaybackTime(0);
+    setPlaybackDuration(0);
+    setRecordedAudioUrl(null);
+    latestAudioBlobRef.current = null;
+    setRecordingTime(0);
+    setRemainingTime(180);
+    setRetryCount(1);
+  }
+
+  /** ---------------- 녹음 중지 / 타임아웃 핸들러 (deps 안전) ---------------- */
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       try {
         mediaRecorderRef.current.stop();
       } catch {
-        setIsRecording(false);
-        setIsPaused(false);
+        /* noop */
       }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      setIsRecording(false);
+      setIsPaused(false);
     }
-  };
-  // 타이머 시작/정지
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [isRecording]);
+
+  const handleTimeout = useCallback(async (questionId: string) => {
+    try {
+      await sendTimeout(questionId);
+      // 현재 스펙에선 sendTimeout이 다음 질문을 주지 않으므로 종료 처리
+      resetForNext();
+      setShowCompleteModal(true);
+    } catch (e) {
+      console.error('시간초과 처리 실패:', e);
+      alert('시간초과 처리에 실패했습니다.');
+    }
+  }, []);
+
+  /** ---------------- 타이머 ---------------- */
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = window.setInterval(() => {
@@ -65,6 +115,9 @@ export default function AnswerQuestion() {
         setRemainingTime((prev) => {
           if (prev <= 1) {
             stopRecording();
+            if (currentQuestion?.questionId) {
+              void handleTimeout(currentQuestion.questionId);
+            }
             return 0;
           }
           return prev - 1;
@@ -81,15 +134,16 @@ export default function AnswerQuestion() {
         timerRef.current = null;
       }
     };
-  }, [isRecording, isPaused]);
+  }, [isRecording, isPaused, currentQuestion?.questionId, stopRecording, handleTimeout]);
 
-  // 녹음 시작
+  /** ---------------- 녹음 제어 ---------------- */
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      latestAudioBlobRef.current = null;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -100,13 +154,14 @@ export default function AnswerQuestion() {
       mediaRecorder.onstop = () => {
         const mimeType = mediaRecorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        latestAudioBlobRef.current = audioBlob;
+
         const audioUrl = URL.createObjectURL(audioBlob);
-        setRecordedAudio(audioUrl);
+        setRecordedAudioUrl(audioUrl);
 
         // 재생 상태 초기화
         setIsPlaying(false);
         setPlaybackTime(0);
-        // duration은 loadedmetadata에서 확정
 
         // 스트림 정리
         stream.getTracks().forEach((track) => track.stop());
@@ -115,9 +170,9 @@ export default function AnswerQuestion() {
       mediaRecorder.start();
       setIsRecording(true);
       setIsPaused(false);
-      setRecordedAudio(null);
+      setRecordedAudioUrl(null);
 
-      // 녹음 타이머 초기화
+      // 타이머 초기화
       setRecordingTime(0);
       setRemainingTime(180);
     } catch (error) {
@@ -126,10 +181,8 @@ export default function AnswerQuestion() {
     }
   };
 
-  // 녹음 일시정지/재개
   const togglePause = () => {
     if (!mediaRecorderRef.current) return;
-
     if (isPaused) {
       mediaRecorderRef.current.resume();
       setIsPaused(false);
@@ -139,7 +192,6 @@ export default function AnswerQuestion() {
     }
   };
 
-  // 재녹음
   const handleRetry = () => {
     if (retryCount > 0) {
       // 재생 중이면 멈춤
@@ -151,18 +203,17 @@ export default function AnswerQuestion() {
       setPlaybackTime(0);
       setPlaybackDuration(0);
 
-      setRecordedAudio(null);
+      setRecordedAudioUrl(null);
       setRecordingTime(0);
       setRemainingTime(180);
-      setRetryCount(retryCount - 1);
-      startRecording();
+      setRetryCount((c) => c - 1);
+      void startRecording();
     }
   };
 
-  // 오디오 재생/정지 (실시간 진행 반영)
+  /** ---------------- 재생 제어 ---------------- */
   const toggleAudioPlayback = () => {
     if (!audioRef.current) return;
-
     if (audioRef.current.paused) {
       audioRef.current
         .play()
@@ -174,7 +225,6 @@ export default function AnswerQuestion() {
     }
   };
 
-  // 오디오 이벤트 연결 (진행바/시간 갱신)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -182,22 +232,14 @@ export default function AnswerQuestion() {
     const handleLoadedMetadata = () => {
       const dur = isFinite(audio.duration) ? audio.duration : recordingTime || 0;
       setPlaybackDuration(Math.floor(dur));
-      // 새 오디오 로드 시 진행도 초기화
       setPlaybackTime(Math.floor(audio.currentTime || 0));
     };
-
-    const handleTimeUpdate = () => {
-      setPlaybackTime(Math.floor(audio.currentTime || 0));
-    };
-
+    const handleTimeUpdate = () => setPlaybackTime(Math.floor(audio.currentTime || 0));
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
       setIsPlaying(false);
-      // 재생이 끝나면 진행바를 끝까지 유지했다가 0으로 초기화할지 선택 가능
-      // 여기서는 끝난 뒤 0으로 초기화
       setPlaybackTime(0);
-      // audio.currentTime = 0;  // 필요하면 주석 해제
     };
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -206,7 +248,6 @@ export default function AnswerQuestion() {
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('ended', handleEnded);
 
-    // 이미 메타데이터가 로드된 경우 대비
     if (audio.readyState >= 1) handleLoadedMetadata();
 
     return () => {
@@ -216,61 +257,53 @@ export default function AnswerQuestion() {
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
     };
-    // recordedAudio가 바뀔 때마다 새로 연결
-  }, [recordedAudio, recordingTime]);
+  }, [recordedAudioUrl, recordingTime]);
 
-  // 다음 질문
-  const handleNext = () => {
-    if (!recordedAudio) {
+  /** ---------------- 다음 질문 ---------------- */
+  const applyNext = (next: IQuestion | null) => {
+    if (!next) {
+      setShowCompleteModal(true);
+      return;
+    }
+    setCurrentQuestion(next);
+    setOrdersSeen((prev) => (prev.includes(next.order) ? prev : [...prev, next.order].sort((a, b) => a - b)));
+  };
+
+  const handleNext = async () => {
+    if (!currentQuestion?.questionId) return;
+    if (!latestAudioBlobRef.current) {
       alert('답변을 녹음해주세요.');
       return;
     }
 
-    if (currentQuestion < 4) {
-      // 재생 중이면 멈춤
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-      setIsPlaying(false);
-      setPlaybackTime(0);
-      setPlaybackDuration(0);
-
-      setCurrentQuestion(currentQuestion + 1);
-      // 다음 질문으로 넘어갈 때 상태 초기화
-      setRecordedAudio(null);
-      setRecordingTime(0);
-      setRemainingTime(180);
-      setRetryCount(1);
-    } else {
-      setShowCompleteModal(true);
+    setIsSubmitting(true);
+    try {
+      const next = await uploadRecordingAndGetNext(currentQuestion.questionId, latestAudioBlobRef.current);
+      resetForNext();
+      applyNext(next);
+    } catch (e) {
+      console.error('다음 질문 처리 실패:', e);
+      alert('녹음 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleQuestionClick = (questionNum: number) => {
-    // 질문 이동 시 녹음/재생 상태 정리
-    stopRecording();
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setIsPlaying(false);
-    setPlaybackTime(0);
-    setPlaybackDuration(0);
+  /** ---------------- 탭 이동(표시용) ---------------- */
+  const handleOrderTabClick = useCallback(() => {
+    // 서버가 특정 order의 과거 질문을 다시 불러오는 API를 제공하지 않음.
+    // 탭은 "표시용"으로 유지.
+  }, []);
 
-    setRecordedAudio(null);
-    setRecordingTime(0);
-    setRemainingTime(180);
-    setRetryCount(1);
-
-    setCurrentQuestion(questionNum);
-  };
-
+  /** ---------------- 기타 ---------------- */
   const handleFinalFeedback = () => {
-    navigate('/feedback-result');
+    if (sessionId) {
+      navigate('/feedback-result', { state: { sessionId } });
+    } else {
+      navigate('/feedback-result');
+    }
   };
 
-  // 시간 포맷팅 (초 -> MM:SS)
   const formatTime = (seconds: number) => {
     const s = Math.max(0, Math.floor(seconds || 0));
     const mins = Math.floor(s / 60);
@@ -289,32 +322,31 @@ export default function AnswerQuestion() {
           <p className="text-gray-600 text-md mt-3">제한 시간 내에 면접질문에 답변해주세요.</p>
         </div>
 
-        {/* 질문 탭 */}
+        {/* 질문 탭(표시용: order) */}
         <div className="flex gap-2 mb-6">
-          {questions.map((q) => (
+          {ordersSeen.map((o) => (
             <button
-              key={q.id}
-              onClick={() => handleQuestionClick(q.id)}
+              key={o}
+              onClick={handleOrderTabClick}
               className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
-                currentQuestion === q.id
+                currentQuestion?.order === o
                   ? 'bg-white border-2 border-coral-500 text-coral-500'
                   : 'bg-white border border-gray-300 text-gray-500 hover:border-gray-400'
               }`}
             >
-              질문{q.id}
+              질문{o}
             </button>
           ))}
         </div>
 
         {/* 질문 카드 */}
         <div className="bg-white rounded-2xl p-8 shadow-sm mb-6 flex-1">
-          <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">
-            {currentQuestion}. ({questions[currentQuestion - 1].main})
-          </h3>
+          <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">{currentQuestion ? `질문${currentQuestion.order}` : '질문'}</h3>
           <div className="border-t border-gray-200 pt-6" />
 
           <p className="text-gray-700 text-center mb-8">
-            {currentQuestion}-1. {questions[currentQuestion - 1].sub}
+            {currentQuestion?.mainQuestion}
+            {currentQuestion?.subQuestion ? ` — ${currentQuestion.subQuestion}` : ''}
           </p>
 
           {/* 캐릭터 이미지 */}
@@ -335,7 +367,7 @@ export default function AnswerQuestion() {
             </div>
 
             {/* 녹음 컨트롤 */}
-            {!recordedAudio ? (
+            {!recordedAudioUrl ? (
               <div className="bg-gray-100 rounded-2xl p-6 mb-6">
                 <div className="flex items-center justify-center gap-4">
                   {!isRecording ? (
@@ -380,7 +412,7 @@ export default function AnswerQuestion() {
                 </div>
               </div>
             ) : (
-              // 재생 UI (디자인 동일, 진행바/시간만 실시간 반영)
+              // 재생 UI
               <div className="bg-gray-100 rounded-2xl p-6 mb-6">
                 <div className="flex items-center gap-4">
                   <button
@@ -388,12 +420,10 @@ export default function AnswerQuestion() {
                     className="w-12 h-12 bg-coral-500 hover:bg-coral-600 rounded-full flex items-center justify-center shadow-md transition-colors flex-shrink-0"
                   >
                     {isPlaying ? (
-                      // 일시정지 아이콘
                       <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                       </svg>
                     ) : (
-                      // 재생 아이콘
                       <svg className="w-5 h-5 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M8 5v14l11-7z" />
                       </svg>
@@ -406,17 +436,16 @@ export default function AnswerQuestion() {
                     </div>
                   </div>
 
-                  {/* 우측 시간: 현재/전체 */}
                   <span className="text-sm text-gray-600 font-medium flex-shrink-0">
                     {formatTime(playbackTime)} / {formatTime(playbackDuration)}
                   </span>
                 </div>
-                <audio ref={audioRef} src={recordedAudio || ''} preload="metadata" />
+                <audio ref={audioRef} src={recordedAudioUrl || ''} preload="metadata" />
               </div>
             )}
 
-            {/* 다시 녹음하기 버튼 */}
-            {recordedAudio && (
+            {/* 다시 녹음하기 */}
+            {recordedAudioUrl && (
               <div className="flex justify-center mb-6">
                 <button
                   onClick={handleRetry}
@@ -438,12 +467,12 @@ export default function AnswerQuestion() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleNext}
-            disabled={!recordedAudio}
+            disabled={!recordedAudioUrl || isSubmitting || !currentQuestion?.questionId}
             className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-              recordedAudio ? 'bg-coral-400 hover:bg-coral-500 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              recordedAudioUrl && !isSubmitting ? 'bg-coral-400 hover:bg-coral-500 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            다음
+            {isSubmitting ? '처리 중...' : '다음'}
           </button>
         </div>
       </div>
@@ -464,33 +493,15 @@ export default function AnswerQuestion() {
       )}
 
       <style>{`
-        .bg-coral-50 {
-          background-color: #fff5f5;
-        }
-        .bg-coral-400 {
-          background-color: #ff9580;
-        }
-        .bg-coral-500 {
-          background-color: #ff7f66;
-        }
-        .bg-coral-600 {
-          background-color: #ff6b52;
-        }
-        .text-coral-500 {
-          color: #ff7f66;
-        }
-        .border-coral-500 {
-          border-color: #ff7f66;
-        }
-        .hover\\:bg-coral-500:hover {
-          background-color: #ff7f66;
-        }
-        .hover\\:bg-coral-50:hover {
-          background-color: #fff5f5;
-        }
-        .hover\\:bg-coral-600:hover {
-          background-color: #ff6b52;
-        }
+        .bg-coral-50 { background-color: #fff5f5; }
+        .bg-coral-400 { background-color: #ff9580; }
+        .bg-coral-500 { background-color: #ff7f66; }
+        .bg-coral-600 { background-color: #ff6b52; }
+        .text-coral-500 { color: #ff7f66; }
+        .border-coral-500 { border-color: #ff7f66; }
+        .hover\\:bg-coral-500:hover { background-color: #ff7f66; }
+        .hover\\:bg-coral-50:hover { background-color: #fff5f5; }
+        .hover\\:bg-coral-600:hover { background-color: #ff6b52; }
       `}</style>
     </InterviewLayout>
   );

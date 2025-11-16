@@ -7,6 +7,7 @@ export default function UploadCheck() {
   const navigate = useNavigate();
   const location = useLocation();
   const file = location.state?.file as File | undefined;
+  const resumeKey = location.state?.resumeKey as string | undefined; // resumeKey 추가
 
   const [interviewType, setInterviewType] = useState<'normal' | 'pressure'>('normal');
   const [showJobCard, setShowJobCard] = useState(false);
@@ -14,10 +15,10 @@ export default function UploadCheck() {
 
   // 파일이 없으면 업로드 페이지로 리다이렉트
   useEffect(() => {
-    if (!file) {
+    if (!file || !resumeKey) {
       navigate('/upload', { replace: true });
     }
-  }, [file, navigate]);
+  }, [file, resumeKey, navigate]);
 
   const handleJobSelect = () => {
     setShowJobCard(true);
@@ -32,7 +33,7 @@ export default function UploadCheck() {
   const handleStartInterview = () => {
     navigate('/question-loading', {
       state: {
-        file,
+        resumeKey, // resumeKey 전달 (중요!)
         jobTitle,
         interviewType,
         fileName: file?.name || '',
@@ -40,7 +41,7 @@ export default function UploadCheck() {
     });
   };
 
-  if (!file) return null;
+  if (!file || !resumeKey) return null;
 
   return (
     <InterviewLayout activeMenu="upload">

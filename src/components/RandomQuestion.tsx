@@ -41,7 +41,7 @@ export default function RandomQuestion() {
     ); // 3~8초
 
     return () => clearTimeout(timeout);
-  }, []);
+  }, [questions.length]);
 
   // ===== 유틸 =====
   const formatTime = (s: number) => {

@@ -5,7 +5,7 @@ import { Upload } from 'lucide-react';
 import InterviewLayout from '@/layouts/InterviewLayout';
 import { uploadResume } from '@/services/interviewApi';
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export default function MyInterview() {
@@ -22,7 +22,7 @@ export default function MyInterview() {
     const extension = '.' + (targetFile.name.split('.').pop() ?? '').toLowerCase();
 
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      setError('PDF, DOC, DOCX, TXT 파일만 업로드 가능합니다.');
+      setError('PDF, DOCX 파일만 업로드 가능합니다.');
       return false;
     }
 
@@ -131,7 +131,7 @@ export default function MyInterview() {
             <div className="flex items-center justify-between">
               <span className={file ? 'text-gray-700' : 'text-coral-500'}>{isUploading ? '업로드 중...' : fileName}</span>
               <Upload className="w-5 h-5 text-coral-500" />
-              <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.doc,.docx,.txt" disabled={isUploading} />
+              <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx" disabled={isUploading} />
             </div>
           </div>
 
