@@ -4,6 +4,7 @@ import { Upload } from 'lucide-react';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
 import { uploadResume } from '@/services/interviewApi';
+import orangeFrog from '@/assets/orangeFrog.svg';
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -148,7 +149,7 @@ export default function MyInterview() {
       </div>
 
       <div className="w-80 flex items-end justify-center">
-        <img src="src/assets/orangeFrog.svg" alt="리뷰캐릭터" className="w-64 h-auto" />
+        <img src={orangeFrog} alt="리뷰캐릭터" className="w-64 h-auto" />
       </div>
 
       <style>{`

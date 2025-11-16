@@ -129,30 +129,57 @@ export interface ICreateInterviewSessionResponse {
 }
 
 /** 자소서 기반 질문 생성 및 첫번째 질문 조회 */
-export const createInterviewSession = async (data: ICreateInterviewSessionRequest): Promise<ICreateInterviewSessionResponse> => {
-  const resumeId = extractResumeId(data.resumeKey);
-  const mode: TInterviewMode = data.interviewType === 'pressure' ? 'HARD' : 'NORMAL';
+export const createInterviewSession = async (
+  data: ICreateInterviewSessionRequest,
+): Promise<ICreateInterviewSessionResponse> => {
+  try {
+    console.log('🎬 API 호출: /api/interview-sessions');
+    console.log('- resumeKey:', data.resumeKey);
+    console.log('- jobTitle:', data.jobTitle);
+    console.log('- interviewType:', data.interviewType);
 
-  const payload: ICreateInterviewSessionPayload = {
-    mode,
-    jobRole: data.jobTitle,
-    resumeId,
-  };
+    const resumeId = extractResumeId(data.resumeKey);
+    const mode: InterviewMode = data.interviewType === 'pressure' ? 'HARD' : 'NORMAL';
 
-  const response = await apiClient.post('/api/interview-sessions', payload);
-  const apiResult = unwrapResult<ICreateInterviewSessionApiResponse>(response.data);
+    const payload: ICreateInterviewSessionPayload = {
+      mode,
+      jobRole: data.jobTitle,
+      resumeId,
+    };
 
-  const firstQuestion: IQuestion = {
-    questionId: String(apiResult.firstQuestionId),
-    mainQuestion: apiResult.firstQuestionText,
-    subQuestion: '',
-    order: 1,
-  };
+    console.log('📤 요청 payload:', payload);
 
-  return {
-    sessionId: String(apiResult.sessionId),
-    firstQuestion,
-  };
+    const response = await apiClient.post('/api/interview-sessions', payload);
+
+    console.log('📥 원본 응답:', response.data);
+
+    const apiResult = unwrapResult<ICreateInterviewSessionApiResponse>(response.data);
+
+    console.log('✅ unwrap 후 결과:', apiResult);
+
+    const firstQuestion: IQuestion = {
+      questionId: String(apiResult.firstQuestionId),
+      mainQuestion: apiResult.firstQuestionText,
+      subQuestion: '',
+      order: 1,
+    };
+
+    const result = {
+      sessionId: String(apiResult.sessionId),
+      firstQuestion,
+    };
+
+    console.log('✅ 최종 반환값:', result);
+
+    return result;
+  } catch (error: any) {
+    console.error('❌ createInterviewSession 에러:');
+    console.error('- 에러 객체:', error);
+    console.error('- 에러 메시지:', error.message);
+    console.error('- 응답 데이터:', error.response?.data);
+    console.error('- 응답 상태:', error.response?.status);
+    throw error;
+  }
 };
 
 // =====================================================
@@ -383,8 +410,10 @@ export interface IFinalFeedbackResponse {
   timeoutCount: number;
 }
 
-/** 최종 피드백 조회 (GET /api/interview-sesisons/{sessionId}) */
-export const getFinalFeedback = async (sessionId: string | number): Promise<IFinalFeedbackResponse> => {
-  const response = await apiClient.get(`/api/interview-sesisons/${sessionId}`);
+/** 최종 피드백 조회 (GET /api/interview-sessions/{sessionId}) */
+export const getFinalFeedback = async (
+  sessionId: string | number,
+): Promise<IFinalFeedbackResponse> => {
+  const response = await apiClient.get(`/api/interview-sessions/${sessionId}`);
   return unwrapResult<IFinalFeedbackResponse>(response.data);
 };

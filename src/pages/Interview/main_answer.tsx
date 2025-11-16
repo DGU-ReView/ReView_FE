@@ -41,7 +41,6 @@ export default function AnswerQuestion() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const latestAudioBlobRef = useRef<Blob | null>(null);
-  const timerRef = useRef<number | null>(null);
 
   // 재생
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -74,11 +73,11 @@ export default function AnswerQuestion() {
     setRecordedAudioUrl(null);
     latestAudioBlobRef.current = null;
     setRecordingTime(0);
-    setRemainingTime(180);
+    setRemainingTime(180); // 다음 질문용 기본 180초
     setRetryCount(1);
   }
 
-  /** ---------------- 녹음 중지 / 타임아웃 핸들러 (deps 안전) ---------------- */
+  /** ---------------- 녹음 중지 ---------------- */
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       try {
@@ -89,17 +88,14 @@ export default function AnswerQuestion() {
       setIsRecording(false);
       setIsPaused(false);
     }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
   }, [isRecording]);
 
+  /** ---------------- 시간초과 처리 ---------------- */
   const handleTimeout = useCallback(async (questionId: string) => {
     try {
+      // BE 문서의 "사용자가 시간초과로 답변하지 못한 경우 프론트가 호출하는 API"
       await sendTimeout(questionId);
-      // 현재 스펙에선 sendTimeout이 다음 질문을 주지 않으므로 종료 처리
-      resetForNext();
+      // 현재 스펙: 시간초과 나면 세션 종료 → 완료 모달
       setShowCompleteModal(true);
     } catch (e) {
       console.error('시간초과 처리 실패:', e);
@@ -107,34 +103,53 @@ export default function AnswerQuestion() {
     }
   }, []);
 
-  /** ---------------- 타이머 ---------------- */
+  /** ---------------- 녹음 시간 타이머 (녹음 중일 때만 증가) ---------------- */
   useEffect(() => {
     if (isRecording && !isPaused) {
-      timerRef.current = window.setInterval(() => {
+      const id = window.setInterval(() => {
         setRecordingTime((prev) => prev + 1);
-        setRemainingTime((prev) => {
-          if (prev <= 1) {
-            stopRecording();
-            if (currentQuestion?.questionId) {
-              void handleTimeout(currentQuestion.questionId);
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
       }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+
+      return () => {
+        clearInterval(id);
+      };
     }
 
+    // 녹음 중이 아니면 타이머 없음
+    return undefined;
+  }, [isRecording, isPaused]);
+
+  /** ---------------- 180초 카운트다운 (질문 뜨는 순간부터 시작) ---------------- */
+  useEffect(() => {
+    // 질문이 없거나, 이미 완료 모달이 떠 있으면 타이머 돌리지 않음
+    if (!currentQuestion || showCompleteModal) return;
+
+    // 질문이 화면에 노출되는 순간부터 1초마다 remainingTime 감소
+    const id = window.setInterval(() => {
+      setRemainingTime((prev) => {
+        if (prev <= 1) {
+          clearInterval(id);
+
+          // 녹음 중이면 강제로 정지
+          if (isRecording) {
+            stopRecording();
+          }
+
+          if (currentQuestion?.questionId) {
+            void handleTimeout(currentQuestion.questionId);
+          }
+
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // 질문이 바뀌거나, 컴포넌트 언마운트 시 타이머 정리
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      clearInterval(id);
     };
-  }, [isRecording, isPaused, currentQuestion?.questionId, stopRecording, handleTimeout]);
+  }, [currentQuestion?.questionId, isRecording, stopRecording, handleTimeout, showCompleteModal]);
 
   /** ---------------- 녹음 제어 ---------------- */
   const startRecording = async () => {
@@ -172,9 +187,8 @@ export default function AnswerQuestion() {
       setIsPaused(false);
       setRecordedAudioUrl(null);
 
-      // 타이머 초기화
+      // 녹음 시간은 새로 시작
       setRecordingTime(0);
-      setRemainingTime(180);
     } catch (error) {
       console.error('마이크 접근 오류:', error);
       alert('마이크 접근 권한이 필요합니다.');

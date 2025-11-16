@@ -32,7 +32,7 @@ export const router = createBrowserRouter([
       { path: 'community/write', element: <CommunityWrite /> },
       { path: 'community/edit/:id', element: <CommunityEdit /> },
       { path: 'community/detail/:id', element: <CommunityDetail /> },
-      { path: 'myInterview/:id', element: <MyInterviews /> },
+      { path: 'myInterviews/:id', element: <MyInterviews /> },
       { path: 'myEvaluate/:id', element: <MyEvaluate /> },
       { path: 'upload', element: <MyInterview /> }, // ← myInterview에서 upload로 변경
       { path: 'upload-done', element: <UploadDone /> },
