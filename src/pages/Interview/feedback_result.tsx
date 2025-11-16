@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
-import type { IFeedbackItem, IFinalFeedbackResponse } from '@/services/interviewApi';
+import type { IFinalFeedbackResponse } from '@/services/interviewApi';
 import { getFinalFeedback } from '@/services/interviewApi';
 
 interface IQuestionState {
@@ -32,7 +32,7 @@ export default function FeedbackResult() {
         setIsLoading(true);
         const response = await getFinalFeedback(sessionId);
         setFeedbackData(response);
-        const states = response.feedbacks.map((_, idx) => ({ id: idx + 1, showAnswer: false }));
+        const states = response.feedbacks.map((_, idx: number) => ({ id: idx + 1, showAnswer: false }));
         setQuestionStates(states);
       } catch (err) {
         console.error('❌ 피드백 조회 실패:', err);
@@ -97,7 +97,7 @@ export default function FeedbackResult() {
         </div>
 
         <div className="grid grid-cols-2 gap-6 pb-8">
-          {feedbacks.map((item: IFeedbackItem, index: number) => {
+          {feedbacks.map((item, index: number) => {
             const isShowingAnswer = questionStates.find((q) => q.id === index + 1)?.showAnswer || false;
             const isPositive = item.feedbackType === 'positive';
             const feedbackTypeLabel = isPositive ? 'AI 피드백(긍정)' : 'AI 피드백(개선)';
