@@ -31,7 +31,7 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(data ?? error);
     }
     if (status === 404 || status === 400) {
-      if (data.errorCode === 'RECORDING_NOT_FOUND' && !hasShown404Modal) {
+      if ((data.errorCode === 'STORAGE_RECORDING_NOT_FOUND' || data.errorCode === 'RECORDING_NOT_FOUND') && !hasShown404Modal) {
         hasShown404Modal = true;
         closeModal();
         openModal('noRecord');
