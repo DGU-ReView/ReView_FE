@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+// src/pages/Interview/question_loading.tsx
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
@@ -11,14 +12,21 @@ type TLocationState = {
   fileName?: string;
   jobTitle?: string;
   interviewType?: 'normal' | 'pressure';
-  resumeKey?: string;
+  resumeKey?: string; // S3 key
 };
 
 export default function QuestionLoading() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: TLocationState };
 
+  // ✅ 부트스트랩이 중복 실행되는 것을 막기 위한 ref 가드
+  const bootstrappedRef = useRef(false);
+
   useEffect(() => {
+    // 이미 실행된 적 있으면 다시 실행하지 않음
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
+
     const bootstrap = async () => {
       try {
         const fileName = location.state?.fileName ?? '자소서';
@@ -26,29 +34,20 @@ export default function QuestionLoading() {
         const interviewType = location.state?.interviewType ?? 'normal';
         const resumeKey = location.state?.resumeKey;
 
-        console.log('🎬 면접 세션 생성 시작');
-        console.log('- fileName:', fileName);
-        console.log('- jobTitle:', jobTitle);
-        console.log('- interviewType:', interviewType);
-        console.log('- resumeKey:', resumeKey);
-
         if (!jobTitle || !resumeKey) {
           alert('면접 생성에 필요한 정보가 없습니다. (jobTitle/resumeKey)');
           navigate(-1);
           return;
         }
 
+        // 스펙에 맞게 세션 생성 요청
         const resp: ICreateInterviewSessionResponse = await createInterviewSession({
           resumeKey,
           jobTitle,
           interviewType,
         });
 
-        console.log('✅ 면접 세션 생성 성공:', resp);
-        console.log('- sessionId:', resp.sessionId);
-        console.log('- firstQuestion:', resp.firstQuestion);
-
-        // 성공 → 답변 페이지로 이동
+        // ✅ 성공 → 답변 페이지로 이동
         navigate(ANSWER_ROUTE, {
           replace: true,
           state: {
@@ -61,19 +60,16 @@ export default function QuestionLoading() {
             fromLoading: true,
           },
         });
-      } catch (e: any) {
-        console.error('❌ 질문 생성 실패:', e);
-        console.error('- 에러 메시지:', e.message);
-        console.error('- 에러 응답:', e.response?.data);
-        console.error('- 에러 상태:', e.response?.status);
-
+      } catch (e) {
+        console.error('질문 생성 실패:', e);
         alert('맞춤형 질문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
         navigate(-1);
       }
     };
 
     void bootstrap();
-  }, [location.state, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]); // location.state는 초기 한 번만 쓰고, 재실행을 막기 위해 deps에서 제외
 
   return (
     <InterviewLayout activeMenu="answer">
@@ -95,17 +91,10 @@ export default function QuestionLoading() {
       </div>
 
       <style>{`
-        .bg-coral-500 {
-          background-color: #ff7f66;
-        }
+        .bg-coral-500 { background-color: #ff7f66; }
         @keyframes bounce {
-          0%,
-          100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-20px);
-          }
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-20px); }
         }
         .animate-bounce {
           animation: bounce 0.6s ease-in-out infinite;
