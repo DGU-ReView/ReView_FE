@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TModalType = 'alert';
+export type TModalType = 'alert' | 'login' | 'noRecord';
 
 interface IModalStore {
   isOpen: boolean;

@@ -144,35 +144,40 @@ export default function MyInterview() {
             {isUploading ? '업로드 중...' : '제출하기'}
           </button>
         </div>
-      </div>
+      </section>
+      <section className="flex flex-col gap-8">
+        {categories.map(({ title, description, routes, categoryData }, idx) => {
+          const items = categoryData?.result.items ?? [];
+          const totalSlides = items.length + 1;
+          const slidesPerView = totalSlides >= 3 ? 2.7 : totalSlides || 1;
 
-      <div className="w-80 flex items-end justify-center">
-        <img src="src/assets/orangeFrog.svg" alt="리뷰캐릭터" className="w-64 h-auto" />
-      </div>
+          return (
+            <div className="h-75 w-full flex gap-25" key={idx}>
+              <div className="shrink-0 pl-20 flex flex-col gap-2.5">
+                <p className="bg-[#E95F45]/20 px-1 w-fit rounded text-2xl font-bold">{title}</p>
+                <p className="text-lg font-extralight">{description}</p>
+              </div>
+              <Swiper spaceBetween={50} slidesPerView={slidesPerView}>
+                <SwiperSlide key="add-card" className="!mr-14">
+                  <AddCard onClick={() => window.location.replace(title === '나의 면접,' ? route.myInterview : route.evaluate)} />
+                </SwiperSlide>
 
-      <style>{`
-        .bg-coral-50 {
-          background-color: #fff5f5;
-        }
-        .bg-coral-400 {
-          background-color: #ff9580;
-        }
-        .bg-coral-500 {
-          background-color: #ff7f66;
-        }
-        .text-coral-500 {
-          color: #ff7f66;
-        }
-        .border-coral-300 {
-          border-color: #ffb3a3;
-        }
-        .border-coral-400 {
-          border-color: #ff9580;
-        }
-        .hover\\:bg-coral-500:hover {
-          background-color: #ff7f66;
-        }
-      `}</style>
-    </InterviewLayout>
+                {title === '나의 면접,'
+                  ? myInterviewData?.result.items.map(({ interviewId, jobRole }) => (
+                      <SwiperSlide key={interviewId}>
+                        <InterviewCard id={interviewId} title={jobRole} onClick={() => movePage(routes, interviewId)} />
+                      </SwiperSlide>
+                    ))
+                  : myFeedbackData?.result.items.map(({ peerFeedbackId, title: jobTitle }) => (
+                      <SwiperSlide key={peerFeedbackId}>
+                        <EvaluateCard title={jobTitle} onClick={() => movePage(routes, peerFeedbackId)} />
+                      </SwiperSlide>
+                    ))}
+              </Swiper>
+            </div>
+          );
+        })}
+      </section>
+    </div>
   );
 }

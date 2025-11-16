@@ -12,31 +12,7 @@ export default function CustomHeader() {
   const navigate = useNavigate();
   const handleLogin = () => {
     const authUrl = `${import.meta.env.VITE_API_BASE_URL}/oauth2/authorization/kakao`;
-    const popup = window.open(authUrl, 'kakao-oauth', 'width=480,height=640');
-
-    const API_ORIGIN = new URL(import.meta.env.VITE_API_BASE_URL).origin;
-
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== API_ORIGIN) return;
-      if (!e.data || e.data.type !== 'oauth-kakao') return;
-
-      window.removeEventListener('message', onMessage);
-      popup?.close();
-
-      if (e.data.ok) {
-        navigate(route.home);
-      } else {
-        alert('실패');
-      }
-    };
-
-    window.addEventListener('message', onMessage);
-
-    setTimeout(() => {
-      if (!popup || popup.closed) {
-        window.removeEventListener('message', onMessage);
-      }
-    }, 1500);
+    window.open(authUrl, 'kakao-oauth', 'width=480,height=640');
   };
   return (
     <div className="pt-10 w-full h-[109px] z-2 fixed top-0 left-0 flex items-center justify-around backdrop-blur-[10px]">
