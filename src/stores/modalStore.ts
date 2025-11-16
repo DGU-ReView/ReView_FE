@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TModalType = 'alert';
+export type TModalType = 'alert' | 'login' | 'noRecord';
 
 interface IModalStore {
   isOpen: boolean;
@@ -9,10 +9,10 @@ interface IModalStore {
   closeModal: () => void;
 }
 
-export const useModalStore = create<IModalStore>((set) => ({
+export const useModalStore = create<IModalStore>((set: any) => ({
   isOpen: false,
   type: null,
-  openModal: (type) =>
+  openModal: (type: TModalType) =>
     set({
       isOpen: true,
       type,

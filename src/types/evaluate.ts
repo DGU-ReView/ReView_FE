@@ -1,5 +1,5 @@
 export type TEvaluateOtherResponse = {
-  errorCode: number | null;
+  errorCode: string | null;
   message: string;
   result: {
     recordingId: number;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import useGetOtherInterview from '@/hooks/useGetOtherInterview';
 import usePostOtherInterview from '@/hooks/usePostOtherInterview';
@@ -9,7 +9,7 @@ import FormTitle from '@/components/common/FormTitle';
 import O from '@/assets/o.svg?react';
 import X from '@/assets/x.svg?react';
 
-const MIN_BYTES = 100;
+const MIN_CHARS = 100;
 const REQUIRED_SECONDS = 90;
 
 export default function EvaluateStart() {
@@ -20,6 +20,10 @@ export default function EvaluateStart() {
   const [questionText, setQuestionText] = useState('');
   const [elapsedSec, setElapsedSec] = useState(0);
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSec((prev) => prev + 1);
@@ -27,9 +31,33 @@ export default function EvaluateStart() {
 
     return () => clearInterval(timer);
   }, []);
-  const evaluateBytes = new TextEncoder().encode(evaluateText).length;
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
 
-  const isLengthOk = evaluateBytes >= MIN_BYTES;
+    const handleTimeUpdate = () => {
+      if (!audio.duration) return;
+      setProgress((audio.currentTime / audio.duration) * 100);
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setProgress(100);
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [data?.result.recordingUrl]);
+  const getCharCount = (text: string) => [...text].length;
+
+  const evaluateChars = getCharCount(evaluateText);
+  const isLengthOk = evaluateChars >= MIN_CHARS;
+
   const isTimeOk = elapsedSec >= REQUIRED_SECONDS;
   const canSubmit = isLengthOk && isTimeOk;
 
@@ -41,6 +69,18 @@ export default function EvaluateStart() {
       body: evaluateText,
       followUpQuestion: questionText,
     });
+  };
+  const handleTogglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play();
+      setIsPlaying(true);
+    }
   };
 
   return (
@@ -54,7 +94,20 @@ export default function EvaluateStart() {
         <section className="bg-white rounded-[20px] p-5 font-normal text-sm">이 사용자는 {data?.result.jobRole} 직무를 목표로 준비 중인 면접자입니다.</section>
         <section className="flex flex-col gap-8">
           <FormTitle text={data?.result.question ?? ''} />
-          <div className="h-13 w-full rounded-[15px] bg-[#E95F45] p-2">-</div>
+          {data?.result.recordingUrl && (
+            <>
+              <audio ref={audioRef} src={data.result.recordingUrl} preload="metadata" />
+
+              <button type="button" onClick={handleTogglePlay} className="h-13 w-full rounded-[20px] bg-[#E95F45] px-6 flex items-center gap-6">
+                <div className="flex items-center justify-center rounded-full border-4 border-white w-8 h-8">
+                  <span className="text-white text-sm leading-none">{isPlaying ? '❚❚' : '▶'}</span>
+                </div>
+                <div className="flex-1 h-1 rounded-full bg-white/50 overflow-hidden">
+                  <div className="h-full bg-white transition-[width] duration-150" style={{ width: `${progress}%` }} />
+                </div>
+              </button>
+            </>
+          )}
           <div className="flex flex-col gap-3 bg-white rounded-[20px] p-5 font-normal text-sm">
             <p className="text-xs font-normal text-[#8D8D8D]">{data?.result.jobRole} 직무 사용자의 답변</p>
             {data?.result.sttText}
@@ -75,7 +128,7 @@ export default function EvaluateStart() {
               <p>평가 글자수</p>
               <div className="flex items-center gap-2">
                 <p className="text-xs">
-                  {evaluateBytes} / {MIN_BYTES} bytes
+                  {evaluateChars} / {MIN_CHARS} 자
                 </p>
                 {isLengthOk ? <O className="size-5" /> : <X className="size-5" />}
               </div>

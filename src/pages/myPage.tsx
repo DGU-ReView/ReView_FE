@@ -24,7 +24,7 @@ export default function MyPage() {
   const { data: myInterviewData } = useGetMyInterview({ cursor: {}, limit: 12 });
   const { data: myFeedbackData } = useGetMyFeedback({ cursor: {}, limit: 12 });
   const categories = [
-    { title: '나의 면접,', description: '그동안의 열정을 모았어요', routes: route.myInterview, categoryData: myInterviewData },
+    { title: '나의 면접,', description: '그동안의 열정을 모았어요', routes: route.myInterviews, categoryData: myInterviewData },
     { title: '나의 평가,', description: '내가 남긴 흔적을 모았어요', routes: route.myEvaluate, categoryData: myFeedbackData },
   ];
   const experienceTags = getExperienceHashTags(profileData?.result.experienceTags);
@@ -85,7 +85,7 @@ export default function MyPage() {
               </div>
               <Swiper spaceBetween={50} slidesPerView={slidesPerView}>
                 <SwiperSlide key="add-card" className="!mr-14">
-                  <AddCard />
+                  <AddCard onClick={() => window.location.replace(title === '나의 면접,' ? route.myInterviews : route.evaluate)} />
                 </SwiperSlide>
 
                 {title === '나의 면접,'

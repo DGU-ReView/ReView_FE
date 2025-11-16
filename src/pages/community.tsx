@@ -1,5 +1,6 @@
 import 'swiper/css';
 
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Swiper, SwiperSlide } from 'swiper/react';
 
@@ -14,6 +15,9 @@ import { route } from '@/routes/route';
 export default function Community() {
   const navigate = useNavigate();
   const { data } = useGetCommunityList({ cursors: {}, limit: 20 });
+
+  const [keyword, setKeyword] = useState('');
+
   const categories = [
     { label: 'IT / 공학', value: 'IT_ENGINEERING' },
     { label: '비즈니스 / 금융', value: 'BUSINESS_FINANCE' },
@@ -25,6 +29,8 @@ export default function Community() {
     { label: '기술 / 제조·건설', value: 'TECH_MANUFACTURING_CONSTRUCTION' },
     { label: '농업 / 수산', value: 'AGRICULTURE_FISHERY' },
   ] as const;
+
+  const normalizedKeyword = keyword.trim().toLowerCase();
 
   return (
     <>
@@ -39,6 +45,8 @@ export default function Community() {
               type="text"
               placeholder="면접 경험을 검색해보세요"
               className="w-full pl-6 pr-17 py-2 rounded-lg h-13 border border-[#E95F45]/40 placeholder:text-[#E95F45] text-[#E95F45] text-base font-medium focus:outline focus:outline-[#E95F45]"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
             />
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-5" />
           </div>
@@ -50,6 +58,7 @@ export default function Community() {
           </button>
         </div>
       </section>
+
       <section className="w-full h-fit flex flex-col gap-20">
         <div className="flex items-center gap-4 px-20">
           <Frog className="size-40" />
@@ -58,15 +67,17 @@ export default function Community() {
             <p className="font-light">다른 사람들은 이렇게 답했어요</p>
           </div>
         </div>
-        <div className="flex flex-col gap-8">
+
+        <div className="flex flex-col gap-8 mb-20">
           {categories.map(({ label, value }) => {
             const categoryData = data?.find((d) => d.category === value);
             const previews = categoryData?.previews ?? [];
+            const filtered = normalizedKeyword ? previews.filter((p) => p.title?.toLowerCase().includes(normalizedKeyword)) : previews;
 
-            if (!previews.length) return null;
+            if (!filtered.length) return null;
 
-            const isSingle = previews.length <= 1;
-            const slidesPerView = previews.length >= 3 ? 2.7 : previews.length;
+            const isSingle = filtered.length <= 1;
+            const slidesPerView = filtered.length >= 3 ? 2.7 : filtered.length;
 
             return (
               <div className="w-full flex gap-25" key={value}>
@@ -77,11 +88,11 @@ export default function Community() {
 
                 {isSingle ? (
                   <div className="flex-1 flex gap-5">
-                    <CommunityCard title={previews[0].title} onClick={() => navigate(route.communityDetail + `/${previews[0].id}`)} />
+                    <CommunityCard title={filtered[0].title} onClick={() => navigate(route.communityDetail + `/${filtered[0].id}`)} />
                   </div>
                 ) : (
                   <Swiper className="flex-1" spaceBetween={50} slidesPerView={slidesPerView} slidesOffsetAfter={50}>
-                    {previews.map(({ id, title }) => (
+                    {filtered.map(({ id, title }) => (
                       <SwiperSlide key={id}>
                         <CommunityCard title={title} onClick={() => navigate(route.communityDetail + `/${id}`)} />
                       </SwiperSlide>
