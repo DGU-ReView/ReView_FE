@@ -2,27 +2,27 @@ import apiClient from './api';
 
 // ==================== 타입 정의 ====================
 
-export interface RandomQuestion {
+export interface IRandomQuestion {
   questionId: string;
   question: string;
   peerAnswerId: string;
 }
 
-export interface RandomQuestionRecordingRequest {
+export interface IRandomQuestionRecordingRequest {
   recordingKey: string;
 }
 
-export interface FeedbackRecordingResponse {
+export interface IFeedbackRecordingResponse {
   recordingId: string;
   status: 'processing' | 'completed' | 'failed';
 }
 
-export interface FeedbackResultResponse {
+export interface IFeedbackResultResponse {
   status: 'processing' | 'completed' | 'failed';
   feedback?: string;
 }
 
-export interface PresignUrlResponse {
+export interface IPresignUrlResponse {
   presignedUrl: string;
   fileKey: string;
 }
@@ -32,7 +32,7 @@ export interface PresignUrlResponse {
 /**
  * 1. 랜덤 팝업 질문 조회
  */
-export const getRandomQuestion = async (peerAnswerId: string): Promise<RandomQuestion> => {
+export const getRandomQuestion = async (peerAnswerId: string): Promise<IRandomQuestion> => {
   const response = await apiClient.get(`/api/random-questions/peer/${peerAnswerId}`);
   return response.data;
 };
@@ -40,7 +40,7 @@ export const getRandomQuestion = async (peerAnswerId: string): Promise<RandomQue
 /**
  * 2. 랜덤 팝업 질문 - 녹음 업로드용 프리사인 URL 발급
  */
-export const getFeedbackRecordingPresignUrl = async (fileName: string): Promise<PresignUrlResponse> => {
+export const getFeedbackRecordingPresignUrl = async (fileName: string): Promise<IPresignUrlResponse> => {
   const response = await apiClient.post('/api/presign/recording/feedback-question', { fileName });
   return response.data;
 };
@@ -61,10 +61,7 @@ export const uploadToS3 = async (presignedUrl: string, file: Blob): Promise<void
 /**
  * 4. 랜덤 질문에 대한 recording 저장 및 피드백 생성 (비동기)
  */
-export const saveFeedbackRecording = async (
-  questionId: string,
-  data: RandomQuestionRecordingRequest
-): Promise<FeedbackRecordingResponse> => {
+export const saveFeedbackRecording = async (questionId: string, data: IRandomQuestionRecordingRequest): Promise<IFeedbackRecordingResponse> => {
   const response = await apiClient.get(`/api/random-questions/peer/questions/${questionId}`, {
     params: data,
   });
@@ -74,7 +71,7 @@ export const saveFeedbackRecording = async (
 /**
  * 5. 랜덤 질문에 대한 피드백 확인 (polling)
  */
-export const getFeedbackResult = async (recordingId: string): Promise<FeedbackResultResponse> => {
+export const getFeedbackResult = async (recordingId: string): Promise<IFeedbackResultResponse> => {
   const response = await apiClient.get(`/api/random-questions/peer/recordings/${recordingId}/feedbacks`);
   return response.data;
 };
@@ -82,11 +79,7 @@ export const getFeedbackResult = async (recordingId: string): Promise<FeedbackRe
 /**
  * 6. Polling 헬퍼 함수
  */
-export const pollFeedbackResult = async (
-  recordingId: string,
-  maxAttempts: number = 60,
-  interval: number = 5000
-): Promise<FeedbackResultResponse> => {
+export const pollFeedbackResult = async (recordingId: string, maxAttempts: number = 60, interval: number = 5000): Promise<IFeedbackResultResponse> => {
   let attempts = 0;
 
   while (attempts < maxAttempts) {
@@ -106,10 +99,7 @@ export const pollFeedbackResult = async (
 /**
  * 7. SSE 구독 (Server-Sent Events)
  */
-export const subscribeToNotifications = (
-  onMessage: (event: MessageEvent) => void,
-  onError?: (error: Event) => void
-): EventSource => {
+export const subscribeToNotifications = (onMessage: (event: MessageEvent) => void, onError?: (error: Event) => void): EventSource => {
   const eventSource = new EventSource(`${apiClient.defaults.baseURL}/api/subscribe`);
 
   eventSource.onmessage = onMessage;
@@ -126,10 +116,7 @@ export const subscribeToNotifications = (
 /**
  * 랜덤 질문 녹음 업로드 및 피드백 받기 전체 플로우
  */
-export const uploadFeedbackRecordingAndGetResult = async (
-  questionId: string,
-  audioBlob: Blob
-): Promise<string> => {
+export const uploadFeedbackRecordingAndGetResult = async (questionId: string, audioBlob: Blob): Promise<string> => {
   // 1. 프리사인 URL 받기
   const fileName = `feedback-${questionId}-${Date.now()}.webm`;
   const { presignedUrl, fileKey } = await getFeedbackRecordingPresignUrl(fileName);
