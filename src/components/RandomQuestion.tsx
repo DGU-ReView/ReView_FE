@@ -1,16 +1,21 @@
+// src/components/RandomQuestion.tsx
 import { useEffect, useRef, useState } from 'react';
+import {
+  getRandomQuestion,
+  subscribeToNotifications,
+  uploadFeedbackRecordingAndGetResult,
+  type IRandomQuestion,
+  type IRandomNotificationPayload,
+} from '@/services/randomQuestionApi';
+
+type TNotification = IRandomNotificationPayload;
 
 export default function RandomQuestion() {
   const [showPopup, setShowPopup] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-
-  // 질문 데이터
-  const questions = [
-    { id: 1, main: '메인질문', sub: '간단히 자기소개를 해주세요.' },
-    { id: 2, main: '메인질문', sub: '이 직무를 선택한 이유는 무엇인가요?' },
-    { id: 3, main: '메인질문', sub: '본인의 강점은 무엇이라고 생각하나요?' },
-    { id: 4, main: '메인질문', sub: '입사 후 목표는 무엇인가요?' },
-  ];
+  const [notification, setNotification] = useState<TNotification | null>(null);
+  const [questionDetail, setQuestionDetail] = useState<IRandomQuestion | null>(null);
+  const [loadingQuestion, setLoadingQuestion] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // ===== 녹음 상태 =====
   const [isRecording, setIsRecording] = useState(false);
@@ -22,6 +27,7 @@ export default function RandomQuestion() {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const recordTimerRef = useRef<number | null>(null);
+  const latestAudioBlobRef = useRef<Blob | null>(null);
 
   // ===== 재생 상태 =====
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -29,19 +35,46 @@ export default function RandomQuestion() {
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
 
-  // ===== 팝업 랜덤 등장 =====
-  useEffect(() => {
-    const timeout: number = window.setTimeout(
-      () => {
-        const randomIndex = Math.floor(Math.random() * questions.length);
-        setCurrentQuestion(randomIndex);
-        setShowPopup(true);
-      },
-      Math.random() * 5000 + 3000,
-    ); // 3~8초
+  // 제출 중 상태
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    return () => clearTimeout(timeout);
-  }, [questions.length]);
+  // ===== SSE로 랜덤 팝업 알림 구독 =====
+  useEffect(() => {
+    const eventSource = subscribeToNotifications(
+      async (event) => {
+        try {
+          const data = JSON.parse(event.data) as TNotification;
+          // SSE로 알림이 오면 팝업을 띄우고, 해당 peerFeedbackId로 질문 조회
+          setNotification(data);
+          setShowPopup(true);
+          setErrorMessage(null);
+          setQuestionDetail(null);
+          setRecordingTime(0);
+          setRecordedAudio((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+          latestAudioBlobRef.current = null;
+
+          setLoadingQuestion(true);
+          const q = await getRandomQuestion(data.peerFeedbackId);
+          setQuestionDetail(q);
+        } catch (err) {
+          console.error('랜덤 팝업 질문 처리 중 오류:', err);
+          setErrorMessage('팝업 질문을 불러오지 못했습니다.');
+        } finally {
+          setLoadingQuestion(false);
+        }
+      },
+      (error) => {
+        console.error('SSE 연결 오류:', error);
+      },
+    );
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
 
   // ===== 유틸 =====
   const formatTime = (s: number) => {
@@ -49,15 +82,6 @@ export default function RandomQuestion() {
     const m = Math.floor(secs / 60);
     const r = secs % 60;
     return `${m}:${r.toString().padStart(2, '0')}`;
-  };
-
-  const navigateTo = (path: string) => {
-    try {
-      window.history.pushState({}, '', path);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    } catch {
-      window.location.href = path;
-    }
   };
 
   // ===== 녹음 타이머 =====
@@ -83,6 +107,7 @@ export default function RandomQuestion() {
         URL.revokeObjectURL(recordedAudio);
         setRecordedAudio(null);
       }
+      latestAudioBlobRef.current = null;
       setPlaybackTime(0);
       setPlaybackDuration(0);
       setIsPlaying(false);
@@ -101,6 +126,8 @@ export default function RandomQuestion() {
       mediaRecorder.onstop = () => {
         const mime = mediaRecorder.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: mime });
+        latestAudioBlobRef.current = blob;
+
         const url = URL.createObjectURL(blob);
         setRecordedAudio(url);
 
@@ -158,7 +185,8 @@ export default function RandomQuestion() {
       setRecordedAudio(null);
     }
     setRecordingTime(0);
-    startRecording();
+    latestAudioBlobRef.current = null;
+    void startRecording();
   };
 
   // ===== 재생 제어 =====
@@ -209,25 +237,38 @@ export default function RandomQuestion() {
     };
   }, [recordedAudio]);
 
-  // ===== 팝업 제어/페이지 이동 =====
+  // ===== 팝업 닫기 =====
   const handleClose = () => {
     if (isRecording) stopRecording();
     if (audioRef.current) audioRef.current.pause();
     setShowPopup(false);
   };
 
-  const handleGoToInterview = () => {
-    if (isRecording) stopRecording();
-    if (audioRef.current) audioRef.current.pause();
-    navigateTo('/upload');
-    setShowPopup(false);
-  };
-  const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion((i) => i + 1);
-    } else {
-      // 마지막이면 면접 페이지로 이동 (기존 동작 유지)
-      handleGoToInterview();
+  // ===== 답변 제출 (녹음 업로드 + 피드백 생성) =====
+  const handleSubmit = async () => {
+    if (!questionDetail?.question?.questionId) {
+      alert('질문 정보를 불러오지 못했습니다.');
+      return;
+    }
+    if (!latestAudioBlobRef.current) {
+      alert('먼저 답변을 녹음해주세요.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const feedback = await uploadFeedbackRecordingAndGetResult(questionDetail.question.questionId, latestAudioBlobRef.current);
+
+      // 일단은 간단히 alert로 AI 피드백만 보여주기
+      alert(`AI 피드백이 도착했어요.\n\n${feedback.aiFeedback}`);
+
+      // 필요하면 여기에서 feedback.selfFeedback 등도 활용 가능
+      setShowPopup(false);
+    } catch (err) {
+      console.error('랜덤 팝업 답변 제출 실패:', err);
+      alert('답변 제출에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -245,8 +286,10 @@ export default function RandomQuestion() {
 
   if (!showPopup) return null;
 
-  const progress = ((currentQuestion + 1) / questions.length) * 100;
   const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
+
+  // 진행바는 한 개 질문이라 100%로 고정(디자인 유지용)
+  const progress = 100;
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
@@ -258,30 +301,47 @@ export default function RandomQuestion() {
           </svg>
         </button>
 
-        {/* 질문 카드 */}
-        <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">
-          {questions[currentQuestion].id}. ({questions[currentQuestion].main})
-        </h3>
-        <p className="text-gray-700 text-center mb-8">
-          {questions[currentQuestion].id}-1. {questions[currentQuestion].sub}
+        {/* 헤더 - 알림 정보 */}
+        <p className="text-sm text-gray-500 mb-1">
+          {notification ? `${notification.jobName} · ${notification.interviewName} · 질문 ${notification.questionNumber}번` : '랜덤 팝업 질문'}
         </p>
+        <h3 className="text-xl font-semibold text-gray-700 mb-4 text-center">랜덤 팝업 질문이 도착했어요 🔔</h3>
+
+        {/* 질문/맥락 */}
+        {loadingQuestion ? (
+          <p className="text-center text-gray-500 mb-8">질문을 불러오는 중입니다...</p>
+        ) : errorMessage ? (
+          <p className="text-center text-red-500 mb-8">{errorMessage}</p>
+        ) : questionDetail ? (
+          <>
+            {/* 맥락이 되는 질문 + STT */}
+            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-gray-500 mb-1">맥락이 되는 질문</p>
+              <p className="text-sm text-gray-700 mb-2">{questionDetail.context.questionText}</p>
+              {questionDetail.context.sttText && <p className="text-xs text-gray-500 whitespace-pre-line">{questionDetail.context.sttText}</p>}
+            </div>
+
+            {/* 실제 답변해야 할 질문 */}
+            <p className="text-gray-700 text-center mb-8">{questionDetail.question.questionText}</p>
+          </>
+        ) : (
+          <p className="text-center text-gray-500 mb-8">질문 정보를 불러오지 못했습니다.</p>
+        )}
 
         {/* 이미지 */}
         <div className="flex justify-center mb-8">
-          <img src="/src/assets/clockFrog.svg" alt="면접관" className="w-32 h-auto" />
+          <img src="src/assets/clockFrog.svg" alt="면접관" className="w-32 h-auto" />
         </div>
 
-        {/* 질문 진행바 */}
+        {/* 질문 진행바 (디자인 유지용) */}
         <div className="mb-4">
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div className="h-full bg-coral-500 transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
-          <p className="text-center text-sm text-gray-500 mt-2">
-            질문 {currentQuestion + 1} / {questions.length}
-          </p>
+          <p className="text-center text-sm text-gray-500 mt-2">랜덤 팝업 질문</p>
         </div>
 
-        {/* 녹음/재생 영역 */}
+        {/* 녹음 / 재생 영역 */}
         <div className="bg-gray-100 rounded-2xl p-6 mb-6">
           {!recordedAudio ? (
             // === 녹음 UI ===
@@ -377,10 +437,15 @@ export default function RandomQuestion() {
           </button>
 
           <button
-            onClick={handleNext}
-            className="bg-coral-500 hover:bg-coral-600 text-white text-sm font-medium px-6 py-3 rounded-xl shadow-md transition-colors"
+            onClick={handleSubmit}
+            disabled={isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion}
+            className={`px-6 py-3 rounded-xl text-sm font-medium shadow-md transition-colors ${
+              isSubmitting || !latestAudioBlobRef.current || !!errorMessage || loadingQuestion
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-coral-500 hover:bg-coral-600 text-white'
+            }`}
           >
-            {currentQuestion < questions.length - 1 ? '다음' : '면접 시작하기'}
+            {isSubmitting ? '피드백 생성 중...' : '답변 제출하고 피드백 받기'}
           </button>
         </div>
       </div>
@@ -393,7 +458,6 @@ export default function RandomQuestion() {
         .border-coral-500 { border-color: #ff7f66; }
         .hover\\:bg-coral-50:hover { background-color: #fff5f5; }
         .hover\\:bg-coral-600:hover { background-color: #ff6b52; }
-        .hover\\:text-coral-500:hover { color: #ff7f66; }
       `}</style>
     </div>
   );
