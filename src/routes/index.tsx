@@ -8,16 +8,16 @@ import CommunityWrite from '@/pages/communityWrite';
 import Evaluate from '@/pages/evaluate';
 import EvaluateStart from '@/pages/evaluateStart';
 import Home from '@/pages/home';
+import FeedbackResult from '@/pages/Interview/feedback_result';
+import MainAnswer from '@/pages/Interview/main_answer';
+import QuestionDone from '@/pages/Interview/question_done';
+import QuestionLoading from '@/pages/Interview/question_loading';
+import MyInterview from '@/pages/Interview/upload';
+import UploadCheck from '@/pages/Interview/upload_check';
+import UploadDone from '@/pages/Interview/upload_done';
 import MyEvaluate from '@/pages/myEvaluate';
 import MyInterviews from '@/pages/myInterviews';
 import MyPage from '@/pages/myPage';
-import MyInterview from '@/pages/Interview/upload';
-import UploadDone from '@/pages/Interview/upload_done';
-import UploadCheck from '@/pages/Interview/upload_check';
-import QuestionLoading from '@/pages/Interview/question_loading';
-import QuestionDone from '@/pages/Interview/question_done';
-import MainAnswer from '@/pages/Interview/main_answer';
-import FeedbackResult from '@/pages/Interview/feedback_result';
 
 export const router = createBrowserRouter([
   {
@@ -30,7 +30,7 @@ export const router = createBrowserRouter([
       { path: 'evaluate', element: <Evaluate /> },
       { path: 'evaluate/start', element: <EvaluateStart /> },
       { path: 'community/write', element: <CommunityWrite /> },
-      { path: 'community/edit', element: <CommunityEdit /> },
+      { path: 'community/edit/:id', element: <CommunityEdit /> },
       { path: 'community/detail/:id', element: <CommunityDetail /> },
       { path: 'myInterview/:id', element: <MyInterviews /> },
       { path: 'myEvaluate/:id', element: <MyEvaluate /> },

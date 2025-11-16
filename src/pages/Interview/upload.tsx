@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Upload } from 'lucide-react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Upload } from 'lucide-react';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 import { uploadResume } from '@/services/interviewApi';
 
@@ -15,17 +16,20 @@ export default function MyInterview() {
   const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
-  const validateFile = (file: File): boolean => {
-    setError('');
+  // 파일 유효성 검사
+  const validateFile = (validFile: File): boolean => {
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
 
-    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      setError('PDF, DOC, DOCX, TXT 파일만 업로드 가능합니다.');
+    const fileExtension = validFile.name.substring(validFile.name.lastIndexOf('.')).toLowerCase();
+
+    if (!allowedExtensions.includes(fileExtension)) {
+      setError('허용된 파일 형식: PDF, DOC, DOCX, TXT');
       return false;
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      setError('파일 크기는 10MB를 초과할 수 없습니다.');
+    if (validFile.size > maxSize) {
+      setError('파일 크기는 10MB 이하여야 합니다.');
       return false;
     }
 
@@ -35,9 +39,9 @@ export default function MyInterview() {
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
+    } else if (e.type === 'dragleave') {
       setDragActive(false);
     }
   };
@@ -46,7 +50,7 @@ export default function MyInterview() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const selectedFile = e.dataTransfer.files[0];
       if (validateFile(selectedFile)) {
@@ -107,13 +111,15 @@ export default function MyInterview() {
     <InterviewLayout activeMenu="upload">
       <div className="flex-1 flex flex-col items-center justify-center">
         <p className="text-gray-700 text-lg mb-8">자소서를 업로드해주세요.</p>
-        
+
+        {/* 에러 메시지 */}
         {error && (
           <div className="w-full max-w-md mb-4">
             <p className="text-red-500 text-sm text-center">{error}</p>
           </div>
         )}
-        
+
+        {/* 파일 업로드 영역 */}
         <div className="w-full max-w-md space-y-4">
           <div
             onClick={handleBoxClick}
@@ -145,7 +151,7 @@ export default function MyInterview() {
             </div>
           </div>
 
-          <button 
+          <button
             onClick={handleSubmit}
             disabled={!file || isUploading}
             className={`w-full font-medium py-4 rounded-2xl transition-colors ${

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
 import InterviewLayout from '@/layouts/InterviewLayout';
 
 export default function UploadCheck() {
