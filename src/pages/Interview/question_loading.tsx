@@ -1,17 +1,17 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
 import type { ICreateInterviewSessionResponse } from '@/services/interviewApi';
 import { createInterviewSession } from '@/services/interviewApi';
 
-const ANSWER_ROUTE = '/main-answer'; // 프로젝트 라우트에 맞게 조정
+const ANSWER_ROUTE = '/main-answer';
 
 type TLocationState = {
   fileName?: string;
   jobTitle?: string;
   interviewType?: 'normal' | 'pressure';
-  resumeKey?: string; // S3 key
+  resumeKey?: string;
 };
 
 export default function QuestionLoading() {
@@ -26,20 +26,29 @@ export default function QuestionLoading() {
         const interviewType = location.state?.interviewType ?? 'normal';
         const resumeKey = location.state?.resumeKey;
 
+        console.log('🎬 면접 세션 생성 시작');
+        console.log('- fileName:', fileName);
+        console.log('- jobTitle:', jobTitle);
+        console.log('- interviewType:', interviewType);
+        console.log('- resumeKey:', resumeKey);
+
         if (!jobTitle || !resumeKey) {
           alert('면접 생성에 필요한 정보가 없습니다. (jobTitle/resumeKey)');
           navigate(-1);
           return;
         }
 
-        // 스펙에 맞게 요청
         const resp: ICreateInterviewSessionResponse = await createInterviewSession({
           resumeKey,
           jobTitle,
           interviewType,
         });
 
-        // 성공 → 답변 페이지로 이동 (필요값 전달)
+        console.log('✅ 면접 세션 생성 성공:', resp);
+        console.log('- sessionId:', resp.sessionId);
+        console.log('- firstQuestion:', resp.firstQuestion);
+
+        // 성공 → 답변 페이지로 이동
         navigate(ANSWER_ROUTE, {
           replace: true,
           state: {
@@ -52,8 +61,12 @@ export default function QuestionLoading() {
             fromLoading: true,
           },
         });
-      } catch (e) {
-        console.error('질문 생성 실패:', e);
+      } catch (e: any) {
+        console.error('❌ 질문 생성 실패:', e);
+        console.error('- 에러 메시지:', e.message);
+        console.error('- 에러 응답:', e.response?.data);
+        console.error('- 에러 상태:', e.response?.status);
+
         alert('맞춤형 질문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
         navigate(-1);
       }
@@ -82,9 +95,21 @@ export default function QuestionLoading() {
       </div>
 
       <style>{`
-        .bg-coral-500 { background-color: #ff7f66; }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-        .animate-bounce { animation: bounce 0.6s ease-in-out infinite; }
+        .bg-coral-500 {
+          background-color: #ff7f66;
+        }
+        @keyframes bounce {
+          0%,
+          100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-20px);
+          }
+        }
+        .animate-bounce {
+          animation: bounce 0.6s ease-in-out infinite;
+        }
       `}</style>
     </InterviewLayout>
   );
