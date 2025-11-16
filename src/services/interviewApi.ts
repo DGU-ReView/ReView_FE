@@ -76,16 +76,34 @@ export interface IFinalFeedbackResponse {
 // ==================== API 함수들 ====================
 
 /** 1. 자소서 업로드용 프리사인 URL 발급 */
-export const getResumePresignUrl = async (fileName: string): Promise<IResumePresignResponse> => {
-  const response = await apiClient.post<IResumePresignResponse>('/api/presign/resume', { fileName });
+export const getResumePresignUrl = async (
+  fileName: string,
+): Promise<IResumePresignResponse> => {
+  const response = await apiClient.post<IResumePresignResponse>(
+    '/api/presign/resume',
+    null, // body 없음
+    {
+      params: { fileName }, // RequestParam로 전달하도록 변경
+    },
+  );
   return response.data;
 };
 
+
 /** 2. 녹음 업로드용 프리사인 URL 발급 */
-export const getRecordingPresignUrl = async (fileName: string): Promise<IPresignUrlResponse> => {
-  const response = await apiClient.post<IPresignUrlResponse>('/api/presign/recording', { fileName });
+export const getRecordingPresignUrl = async (
+  fileName: string,
+): Promise<IPresignUrlResponse> => {
+  const response = await apiClient.post<IPresignUrlResponse>(
+    '/api/presign/recording',
+    null,
+    {
+      params: { fileName },
+    },
+  );
   return response.data;
 };
+
 
 /** 3. S3에 파일 업로드 (프리사인 URL 사용) */
 export const uploadToS3 = async (
