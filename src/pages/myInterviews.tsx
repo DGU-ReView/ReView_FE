@@ -1,8 +1,349 @@
-export default function MyInterview() {
+// src/pages/myInterviews.tsx
+import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
+
+import useGetInterviewSummary from '@/hooks/useGetInterviewSummary';
+import useGetQuestionAnswers from '@/hooks/useGetQuestionAnswers';
+import useGetRandomQuestions from '@/hooks/useGetRandomQuestions';
+import { getQuestionFeedback } from '@/apis/myPage';
+
+import ClockFrog from '@/assets/clockFrog.svg?react';
+
+type TabType = 'answer' | 'feedback' | 'random';
+
+type FeedbackItem = {
+  order: number;
+  questionId: number;
+  question: string;
+  aiFeedback: string;
+  selfFeedback: string;
+  peerItems: string[];
+};
+
+export default function MyInterviews() {
+  const { id } = useParams<{ id: string }>();
+  const interviewId = id ? Number(id) : 0;
+
+  const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('answer');
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const { data: summaryData, isLoading: summaryLoading } = useGetInterviewSummary(interviewId);
+  const { data: answersData, isLoading: answersLoading } = useGetQuestionAnswers(
+    activeTab === 'answer' || activeTab === 'feedback' ? selectedQuestionId : null,
+  );
+  const { data: randomData, isLoading: randomLoading } = useGetRandomQuestions(activeTab === 'random' ? selectedQuestionId : null);
+
+  // ---------- 안전한 디폴트 값 ----------
+  const timedOutCount = summaryData?.result?.timedOutCount ?? 0;
+  const questionCards = summaryData?.result?.questionCards ?? [];
+  const answerItems = answersData?.result ?? [];
+  const randomItems = randomData?.result ?? [];
+
+  // ---------- 제목/날짜 분리 표시 ----------
+  const pickTitle = (...vals: unknown[]) => vals.find((v) => typeof v === 'string' && (v as string).trim().length > 0) as string | undefined;
+
+  const titleText =
+    pickTitle(
+      (summaryData?.result as any)?.title,
+      (summaryData?.result as any)?.interviewTitle,
+      (summaryData?.result as any)?.interviewName,
+      (summaryData?.result as any)?.name,
+    ) ?? '나의 면접';
+
+  const rawDate = (summaryData?.result as any)?.interviewDate ?? (summaryData?.result as any)?.createdAt ?? (summaryData?.result as any)?.date ?? undefined;
+
+  const dateText = rawDate ? new Date(rawDate).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+
+  // ---------- 첫 질문 자동 선택 ----------
+  useEffect(() => {
+    if (!selectedQuestionId && questionCards.length > 0) {
+      setSelectedQuestionId(questionCards[0].questionId);
+    }
+  }, [questionCards, selectedQuestionId]);
+
+  // ---------- 피드백 탭: 모든 질문 피드백 로딩 ----------
+  useEffect(() => {
+    if (activeTab !== 'feedback' || answerItems.length === 0) return;
+
+    const fetchAllFeedback = async () => {
+      setLoadingFeedback(true);
+      try {
+        const all = await Promise.all(
+          answerItems.map(async (answer) => {
+            try {
+              const feedback = await getQuestionFeedback(answer.questionId);
+              const res = (feedback as any)?.result ?? {};
+              return {
+                order: answer.order,
+                questionId: answer.questionId,
+                question: answer.question,
+                aiFeedback: res.aiFeedback ?? '',
+                selfFeedback: res.selfFeedback ?? '',
+                peerItems: Array.isArray(res.peerItems) ? res.peerItems : [],
+              } as FeedbackItem;
+            } catch (e) {
+              console.error(`질문 ${answer.questionId} 피드백 조회 실패:`, e);
+              return {
+                order: answer.order,
+                questionId: answer.questionId,
+                question: answer.question,
+                aiFeedback: '',
+                selfFeedback: '',
+                peerItems: [],
+              } as FeedbackItem;
+            }
+          }),
+        );
+        setFeedbackList(all);
+      } catch (e) {
+        console.error('피드백 조회 중 오류:', e);
+      } finally {
+        setLoadingFeedback(false);
+      }
+    };
+
+    void fetchAllFeedback();
+  }, [activeTab, answerItems]);
+
+  // ---------- 오디오 재생 ----------
+  const handleAudioPlay = (url: string) => {
+    if (playingAudio === url) {
+      audioRef.current?.pause();
+      setPlayingAudio(null);
+      return;
+    }
+    audioRef.current?.pause();
+    audioRef.current = new Audio(url);
+    audioRef.current.play().catch(() => {});
+    setPlayingAudio(url);
+    audioRef.current.onended = () => setPlayingAudio(null);
+  };
+
+  // ---------- 로딩/에러 ----------
+  if (summaryLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <ClockFrog className="w-32 h-auto mx-auto animate-pulse" />
+          <p className="text-gray-600 text-lg mt-4">데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!summaryData?.result) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-screen">
+        <p className="text-red-500 text-lg">면접 데이터를 찾을 수 없습니다.</p>
+      </div>
+    );
+  }
+
+  const isLoading = answersLoading || loadingFeedback || randomLoading;
+
   return (
-    <div>
-      <p>interview</p>
-      <p>hi</p>
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="max-w-7xl mx-auto">
+        {/* 헤더 */}
+        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">{titleText}</h1>
+          {dateText && <p className="text-sm text-gray-500 mt-1">{dateText}</p>}
+
+          {timedOutCount > 0 && (
+            <p className="text-gray-600 mt-3">
+              시간 초과로 답변하지 못한 질문{' '}
+              <span className="inline-block bg-[#E95F45] text-white px-3 py-1 rounded-md text-sm font-medium">{timedOutCount}개</span>
+            </p>
+          )}
+        </div>
+
+        {/* 질문 카드 리스트 */}
+        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">면접 질문</h2>
+          <div className="grid grid-cols-4 gap-4">
+            {(questionCards ?? []).map((card) => (
+              <button
+                key={card.questionId}
+                onClick={() => setSelectedQuestionId(card.questionId)}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  selectedQuestionId === card.questionId ? 'border-[#E95F45] bg-[#E95F45]/10' : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <p className="text-lg font-semibold text-gray-900">질문 {card.order}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 탭 메뉴 */}
+        <div className="bg-white rounded-t-2xl shadow-md">
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('answer')}
+              className={`flex-1 py-4 text-center font-medium transition-colors ${
+                activeTab === 'answer' ? 'text-[#E95F45] border-b-2 border-[#E95F45]' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              답변 확인
+            </button>
+            <button
+              onClick={() => setActiveTab('feedback')}
+              className={`flex-1 py-4 text-center font-medium transition-colors ${
+                activeTab === 'feedback' ? 'text-[#E95F45] border-b-2 border-[#E95F45]' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              피드백 확인
+            </button>
+            <button
+              onClick={() => setActiveTab('random')}
+              className={`flex-1 py-4 text-center font-medium transition-colors ${
+                activeTab === 'random' ? 'text-[#E95F45] border-b-2 border-[#E95F45]' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              랜덤 질문
+            </button>
+          </div>
+
+          {/* 탭 콘텐츠 */}
+          <div className="p-6 rounded-b-2xl bg-white min-h-[400px]">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <ClockFrog className="w-24 h-auto animate-pulse" />
+              </div>
+            ) : (
+              <>
+                {/* 답변 확인 탭 */}
+                {activeTab === 'answer' && (answerItems ?? []).length > 0 && (
+                  <div className="space-y-4">
+                    {(answerItems ?? []).map((item) => (
+                      <div key={item.questionId} className="bg-gray-50 rounded-lg p-5">
+                        <div className="mb-3">
+                          <span className="inline-block bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium mr-2">질문 {item.order}</span>
+                          <h3 className="text-lg font-semibold text-gray-900 mt-2">{item.question}</h3>
+                        </div>
+                        {item.answerText ? (
+                          <>
+                            <p className="text-gray-700 mb-3 whitespace-pre-wrap">{item.answerText}</p>
+                            <button
+                              onClick={() => handleAudioPlay(item.recordUrl)}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                playingAudio === item.recordUrl ? 'bg-[#E95F45] text-white hover:bg-[#E95F45]/90' : 'bg-gray-600 text-white hover:bg-gray-700'
+                              }`}
+                            >
+                              {playingAudio === item.recordUrl ? '재생 중...' : '음성 재생'}
+                            </button>
+                          </>
+                        ) : (
+                          <p className="text-gray-500 italic">답변이 없습니다.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 피드백 확인 탭 */}
+                {activeTab === 'feedback' && (feedbackList ?? []).length > 0 && (
+                  <div className="space-y-4">
+                    {(feedbackList ?? []).map((item) => (
+                      <div key={item.questionId} className="bg-gray-50 rounded-lg p-5">
+                        <div className="mb-4">
+                          <span className="inline-block bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium mr-2">질문 {item.order}</span>
+                          <h3 className="text-lg font-semibold text-gray-900 mt-2">{item.question}</h3>
+                        </div>
+
+                        <div className="space-y-3">
+                          {item.aiFeedback && (
+                            <div className="bg-blue-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-blue-900 mb-2">🤖 AI 피드백</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.aiFeedback}</p>
+                            </div>
+                          )}
+                          {item.selfFeedback && (
+                            <div className="bg-green-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-green-900 mb-2">✍️ 셀프 피드백</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.selfFeedback}</p>
+                            </div>
+                          )}
+                          {(item.peerItems?.length ?? 0) > 0 && (
+                            <div className="bg-purple-50 rounded-lg p-4">
+                              <p className="text-sm font-semibold text-purple-900 mb-2">👥 동료 피드백</p>
+                              <ul className="space-y-1">
+                                {item.peerItems!.map((peer, index) => (
+                                  <li key={index} className="text-sm text-gray-700 flex items-start">
+                                    <span className="text-purple-500 mr-2">•</span>
+                                    <span>{peer}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {!item.aiFeedback && !item.selfFeedback && (item.peerItems?.length ?? 0) === 0 && (
+                            <p className="text-gray-500 italic text-sm">이 질문에 대한 피드백이 없습니다.</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activeTab === 'feedback' && (feedbackList ?? []).length === 0 && !loadingFeedback && (
+                  <p className="text-gray-500 italic text-center py-8">피드백이 없습니다.</p>
+                )}
+
+                {/* 랜덤 질문 탭 */}
+                {activeTab === 'random' && (
+                  <div className="space-y-4">
+                    {(randomItems ?? []).length > 0 ? (
+                      (randomItems ?? []).map((item, index) => (
+                        <div key={index} className="bg-gray-50 rounded-lg p-5">
+                          <div className="mb-3">
+                            <span className="inline-block bg-[#E95F45] text-white px-3 py-1 rounded-full text-sm font-medium mb-2">랜덤 질문 {index + 1}</span>
+                            <h3 className="text-lg font-semibold text-gray-900">{item.question}</h3>
+                          </div>
+
+                          <div className="mb-3">
+                            <p className="text-sm font-semibold text-gray-600 mb-1">답변:</p>
+                            <p className="text-gray-700 whitespace-pre-wrap">{item.answerText}</p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4 mb-3">
+                            {item.aiFeedback && (
+                              <div className="bg-blue-100 rounded p-3">
+                                <p className="text-sm font-semibold text-blue-900 mb-1">AI 피드백</p>
+                                <p className="text-sm text-gray-700">{item.aiFeedback}</p>
+                              </div>
+                            )}
+                            {item.selfFeedback && (
+                              <div className="bg-green-100 rounded p-3">
+                                <p className="text-sm font-semibold text-green-900 mb-1">셀프 피드백</p>
+                                <p className="text-sm text-gray-700">{item.selfFeedback}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => handleAudioPlay(item.recordingUrl)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              playingAudio === item.recordingUrl ? 'bg-[#E95F45] text-white hover:bg-[#E95F45]/90' : 'bg-gray-600 text-white hover:bg-gray-700'
+                            }`}
+                          >
+                            {playingAudio === item.recordingUrl ? '재생 중...' : '음성 재생'}
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-500 italic text-center py-8">랜덤 질문이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

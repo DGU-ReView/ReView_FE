@@ -1,11 +1,12 @@
-﻿import { useEffect } from 'react';
+// src/pages/Interview/question_loading.tsx
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import InterviewLayout from '@/layouts/InterviewLayout';
 import type { ICreateInterviewSessionResponse } from '@/services/interviewApi';
 import { createInterviewSession } from '@/services/interviewApi';
 
-const ANSWER_ROUTE = '/main-answer'; // 프로젝트 라우트에 맞게 조정
+const ANSWER_ROUTE = '/main-answer';
 
 type TLocationState = {
   fileName?: string;
@@ -18,7 +19,14 @@ export default function QuestionLoading() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: TLocationState };
 
+  // ✅ 부트스트랩이 중복 실행되는 것을 막기 위한 ref 가드
+  const bootstrappedRef = useRef(false);
+
   useEffect(() => {
+    // 이미 실행된 적 있으면 다시 실행하지 않음
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
+
     const bootstrap = async () => {
       try {
         const fileName = location.state?.fileName ?? '자소서';
@@ -32,14 +40,14 @@ export default function QuestionLoading() {
           return;
         }
 
-        // 스펙에 맞게 요청
+        // 스펙에 맞게 세션 생성 요청
         const resp: ICreateInterviewSessionResponse = await createInterviewSession({
           resumeKey,
           jobTitle,
           interviewType,
         });
 
-        // 성공 → 답변 페이지로 이동 (필요값 전달)
+        // ✅ 성공 → 답변 페이지로 이동
         navigate(ANSWER_ROUTE, {
           replace: true,
           state: {
@@ -60,7 +68,8 @@ export default function QuestionLoading() {
     };
 
     void bootstrap();
-  }, [location.state, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]); // location.state는 초기 한 번만 쓰고, 재실행을 막기 위해 deps에서 제외
 
   return (
     <InterviewLayout activeMenu="answer">
@@ -83,8 +92,13 @@ export default function QuestionLoading() {
 
       <style>{`
         .bg-coral-500 { background-color: #ff7f66; }
-        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-        .animate-bounce { animation: bounce 0.6s ease-in-out infinite; }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-20px); }
+        }
+        .animate-bounce {
+          animation: bounce 0.6s ease-in-out infinite;
+        }
       `}</style>
     </InterviewLayout>
   );

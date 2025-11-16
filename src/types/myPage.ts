@@ -23,6 +23,7 @@ export type TMyInterviewResponse = {
     items: {
       interviewId: number;
       jobRole: string;
+      createdAt?: string; // 생성 날짜
     }[];
     nextCursor: number | null;
     hasNext: boolean;
@@ -96,3 +97,73 @@ export const GROWTH_TAG_LABELS: Record<TGrowthTags, string> = {
 export const getExperienceHashTags = (tags?: TExperienceTags[]) => (tags ?? []).map((tag) => `# ${EXPERIENCE_TAG_LABELS[tag]}`);
 
 export const getGrowthHashTags = (tags?: TGrowthTags[]) => (tags ?? []).map((tag) => `# ${GROWTH_TAG_LABELS[tag]}`);
+
+// 나의 면접 상세 - 전체 요약 API
+export type TInterviewSummaryRequest = {
+  interviewId: number;
+};
+
+export type TQuestionCard = {
+  order: number;
+  questionId: number;
+};
+
+export type TAnswerCheckItem = {
+  order: number;
+  questionId: number;
+  question: string;
+  answerText: string | null;
+  recordUrl: string;
+};
+
+export type TInterviewSummaryResponse = {
+  errorCode: null | string;
+  message: string;
+  result: {
+    title: string;
+    timedOutCount: number;
+    questionCards: TQuestionCard[];
+    firstQuestionThread: TAnswerCheckItem[];
+  };
+};
+
+// 나의 면접 상세 - 질문별 답변 확인 API
+export type TQuestionAnswersRequest = {
+  questionId: number;
+};
+
+export type TQuestionAnswersResponse = {
+  errorCode: null | string;
+  message: string;
+  result: TAnswerCheckItem[];
+};
+
+// 나의 면접 상세 - 질문별 피드백 조회 API
+export type TQuestionFeedbackRequest = {
+  questionId: number;
+};
+
+export type TQuestionFeedbackResponse = {
+  errorCode: null | string;
+  message: string;
+  result: {
+    aiFeedback: string;
+    selfFeedback: string;
+    peerItems: string[];
+  };
+};
+
+// 나의 면접 상세 - 질문별 랜덤 질문 답변 확인 API
+export type TRandomQuestionItem = {
+  question: string;
+  aiFeedback: string;
+  selfFeedback: string;
+  answerText: string;
+  recordingUrl: string;
+};
+
+export type TRandomQuestionsResponse = {
+  errorCode: null | string;
+  message: string;
+  result: TRandomQuestionItem[];
+};
