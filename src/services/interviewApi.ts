@@ -7,6 +7,13 @@ export interface PresignUrlResponse {
   fileKey: string;
 }
 
+// 자소서 업로드용 presign 응답 타입
+export interface ResumePresignResponse {
+  uploadUrl: string;
+  key: string;
+  requiredHeaders: Record<string, string>;
+}
+
 export interface CreateInterviewSessionRequest {
   resumeKey: string;
   jobTitle: string;
@@ -62,7 +69,9 @@ export interface FinalFeedbackResponse {
 /**
  * 1. 자소서 업로드용 프리사인 URL 발급
  */
-export const getResumePresignUrl = async (fileName: string): Promise<PresignUrlResponse> => {
+export const getResumePresignUrl = async (
+  fileName: string,
+): Promise<PresignUrlResponse> => {
   const response = await apiClient.post('/api/presign/resume', { fileName });
   return response.data;
 };
@@ -70,7 +79,9 @@ export const getResumePresignUrl = async (fileName: string): Promise<PresignUrlR
 /**
  * 2. 녹음 업로드용 프리사인 URL 발급
  */
-export const getRecordingPresignUrl = async (fileName: string): Promise<PresignUrlResponse> => {
+export const getRecordingPresignUrl = async (
+  fileName: string,
+): Promise<PresignUrlResponse> => {
   const response = await apiClient.post('/api/presign/recording', { fileName });
   return response.data;
 };
@@ -78,7 +89,10 @@ export const getRecordingPresignUrl = async (fileName: string): Promise<PresignU
 /**
  * 3. S3에 파일 업로드 (프리사인 URL 사용)
  */
-export const uploadToS3 = async (presignedUrl: string, file: File | Blob): Promise<void> => {
+export const uploadToS3 = async (
+  presignedUrl: string,
+  file: File | Blob,
+): Promise<void> => {
   await fetch(presignedUrl, {
     method: 'PUT',
     body: file,
@@ -92,7 +106,7 @@ export const uploadToS3 = async (presignedUrl: string, file: File | Blob): Promi
  * 4. 자소서 기반 질문 생성 및 첫번째 질문 조회
  */
 export const createInterviewSession = async (
-  data: CreateInterviewSessionRequest
+  data: CreateInterviewSessionRequest,
 ): Promise<CreateInterviewSessionResponse> => {
   const response = await apiClient.post('/api/interview-sessions', data);
   return response.data;
@@ -103,17 +117,24 @@ export const createInterviewSession = async (
  */
 export const saveRecording = async (
   questionId: string,
-  data: SaveRecordingRequest
+  data: SaveRecordingRequest,
 ): Promise<SaveRecordingResponse> => {
-  const response = await apiClient.post(`/api/questions/${questionId}/recordings`, data);
+  const response = await apiClient.post(
+    `/api/questions/${questionId}/recordings`,
+    data,
+  );
   return response.data;
 };
 
 /**
  * 6. recording 저장 및 프리질문 생성 상태 Polling
  */
-export const getRecordingResult = async (recordingId: string): Promise<RecordingResultResponse> => {
-  const response = await apiClient.get(`/api/recordings/${recordingId}/results`);
+export const getRecordingResult = async (
+  recordingId: string,
+): Promise<RecordingResultResponse> => {
+  const response = await apiClient.get(
+    `/api/recordings/${recordingId}/results`,
+  );
   return response.data;
 };
 
@@ -123,7 +144,7 @@ export const getRecordingResult = async (recordingId: string): Promise<Recording
 export const pollRecordingResult = async (
   recordingId: string,
   maxAttempts: number = 60, // 최대 60번 (5분)
-  interval: number = 5000 // 5초마다
+  interval: number = 5000, // 5초마다
 ): Promise<RecordingResultResponse> => {
   let attempts = 0;
 
@@ -152,8 +173,12 @@ export const sendTimeout = async (questionId: string): Promise<void> => {
 /**
  * 9. 최종 피드백 조회
  */
-export const getFinalFeedback = async (sessionId: string): Promise<FinalFeedbackResponse> => {
-  const response = await apiClient.get(`/api/interview-sessions/${sessionId}`);
+export const getFinalFeedback = async (
+  sessionId: string,
+): Promise<FinalFeedbackResponse> => {
+  const response = await apiClient.get(
+    `/api/interview-sessions/${sessionId}`,
+  );
   return response.data;
 };
 
@@ -166,10 +191,13 @@ export const uploadResume = async (file: File): Promise<string> => {
   try {
     // 1단계: Presigned URL 받기
     console.log('🚀 1단계 - Presigned URL 요청:', file.name);
-    
-    const presignResponse = await apiClient.post<PresignResumeResponse>('/api/presign/resume', {
-      fileName: file.name,
-    });
+
+    const presignResponse = await apiClient.post<ResumePresignResponse>(
+      '/api/presign/resume',
+      {
+        fileName: file.name,
+      },
+    );
 
     console.log('✅ Presigned URL 발급 성공');
 
@@ -204,7 +232,7 @@ export const uploadResume = async (file: File): Promise<string> => {
  */
 export const uploadRecordingAndGetNext = async (
   questionId: string,
-  audioBlob: Blob
+  audioBlob: Blob,
 ): Promise<Question | null> => {
   // 1. 프리사인 URL 받기
   const fileName = `recording-${questionId}-${Date.now()}.webm`;
@@ -214,9 +242,12 @@ export const uploadRecordingAndGetNext = async (
   await uploadToS3(presignedUrl, audioBlob);
 
   // 3. 녹음 저장 및 처리 시작
-  const { recordingId, status, nextQuestion } = await saveRecording(questionId, {
-    recordingKey: fileKey,
-  });
+  const { recordingId, status, nextQuestion } = await saveRecording(
+    questionId,
+    {
+      recordingKey: fileKey,
+    },
+  );
 
   // 4. 즉시 완료된 경우
   if (status === 'completed') {
