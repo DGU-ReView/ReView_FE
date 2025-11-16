@@ -15,7 +15,7 @@ import { route } from '@/routes/route';
 export default function MyPage() {
   const navigate = useNavigate();
   const categories = [
-    { title: '나의 면접,', description: '그동안의 열정을 모았어요', card: InterviewCard, routes: route.myInterview },
+    { title: '나의 면접,', description: '그동안의 열정을 모았어요', card: InterviewCard, routes: route.upload },
     { title: '나의 평가,', description: '내가 남긴 흔적을 모았어요', card: EvaluateCard, routes: route.myEvaluate },
   ];
   const tags = ['# 문제 해결력', '# 리더십', '# 협업'];

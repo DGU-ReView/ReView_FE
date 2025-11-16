@@ -9,7 +9,9 @@ export default function CustomHeader() {
     <div className="pt-10 w-full h-[109px] z-2 fixed top-0 left-0 flex items-center justify-around backdrop-blur-[10px]">
       <Logo className="shrink-0" />
       <div className="flex justify-center items-center gap-20 shrink-0">
-        <button className="text-base font-medium" onClick={() => navigate(route.myInterview)}>나의 면접</button>
+        <button className="text-base font-medium" onClick={() => navigate(route.upload)}>
+          나의 면접
+        </button>
         <button className="text-base font-medium" onClick={() => navigate(route.evaluate)}>
           평가하기
         </button>
