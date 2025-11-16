@@ -90,34 +90,6 @@ export interface FeedbackItem {
 }
 
 /**
- * Q&A 턴 정보
- */
-export interface QnaTurn {
-  turn: 'QUESTION' | 'ANSWER';
-  content: string;
-}
-
-/**
- * 질문 요약 정보
- */
-export interface QuestionSummary {
-  questionNumber: number;
-  rootQuestion: string;
-  aiFeedback?: string;
-  selfFeedback?: string;
-  qnaTurns: QnaTurn[];
-}
-
-/**
- * 면접 요약 정보
- */
-export interface InterviewSummary {
-  interviewTitle: string;
-  timeoutQuestionNumber: number;
-  questionSummaries: QuestionSummary[];
-}
-
-/**
  * 최종 피드백 응답
  */
 export interface FinalFeedbackResponse {
@@ -125,8 +97,6 @@ export interface FinalFeedbackResponse {
   feedbacks: FeedbackItem[];
   totalQuestions: number;
   timeoutCount: number;
-  feedbackProgressStatus?: 'WORKING' | 'FAILED' | 'COMPLETED';
-  interviewSummary?: InterviewSummary;
 }
 
 // ==================== API 함수들 ====================
@@ -175,6 +145,18 @@ export const uploadToS3 = async (
       ...extraHeaders,
     },
   });
+};
+
+/**
+ * S3 key에서 resumeId 추출하는 헬퍼 함수
+ * 예: "resumes/user123/resume-abc123.pdf" -> "resume-abc123"
+ */
+export const extractResumeId = (resumeKey: string): string => {
+  // S3 key에서 파일명 추출 (확장자 제외)
+  const parts = resumeKey.split('/');
+  const fileName = parts[parts.length - 1];
+  const nameWithoutExt = fileName.split('.').slice(0, -1).join('.');
+  return nameWithoutExt;
 };
 
 /**

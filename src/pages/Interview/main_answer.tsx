@@ -1,96 +1,68 @@
+// src/pages/Interview/main_answer.tsx
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
 import InterviewLayout from '@/layouts/InterviewLayout';
-import {
-  uploadRecordingAndGetNext,
-  sendTimeout,
-  NextQuestion,
-} from '@/services/interviewApi';
 
-interface QuestionData {
-  questionId: number;
-  questionText: string;
-  rootId: number;
-  rootText: string;
-  rootIndex: number;
-  type: 'ROOT' | 'FOLLOW_UP';
-}
+import { uploadRecordingAndGetNext, sendTimeout } from '@/services/interviewApi';
+import type { Question } from '@/services/interviewApi';
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const {
-    sessionId,
-    firstQuestionId,
-    firstQuestionText,
-    resumeKey = '자소서',
-  } = location.state || {};
+  const location = useLocation() as {
+    state?: {
+      fileName?: string;
+      jobTitle?: string;
+      interviewType?: 'normal' | 'pressure';
+      resumeKey?: string;
+      sessionId?: string;
+      firstQuestion?: Question;
+      fromLoading?: boolean;
+    };
+  };
 
-  // 질문 관리
-  const [currentQuestion, setCurrentQuestion] = useState<QuestionData | null>(null);
-  const [questionHistory, setQuestionHistory] = useState<QuestionData[]>([]);
+  const { fileName = '자소서', jobTitle, interviewType = 'normal', resumeKey, sessionId, firstQuestion } = location.state || {};
+
+  /** ---------------- 상태 ---------------- */
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(firstQuestion ?? null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+
+  // 탭(질문{order}) – 서버에서 오는 Question.order를 기반으로 생성/유지
+  const [ordersSeen, setOrdersSeen] = useState<number[]>(firstQuestion ? [firstQuestion.order] : []);
 
   // 녹음 관련 상태
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
-  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [remainingTime, setRemainingTime] = useState(180); // 3분 = 180초
+  const [remainingTime, setRemainingTime] = useState(180);
   const [retryCount, setRetryCount] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const latestAudioBlobRef = useRef<Blob | null>(null);
   const timerRef = useRef<number | null>(null);
-  const isTimeoutProcessedRef = useRef(false);
 
-  // 재생 관련 상태/참조
+  // 재생
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
 
-  // 초기 질문 설정
+  /** ---------------- 초기 유효성 ---------------- */
   useEffect(() => {
-    if (!sessionId || !firstQuestionId || !firstQuestionText) {
-      alert('면접 세션 정보가 없습니다.');
-      navigate('/upload');
-      return;
+    if (!firstQuestion) {
+      // question_loading에서 세션 생성 후 오도록 설계됨
+      // 직접 접근 시엔 안정적으로 뒤로 돌림
+      navigate('/question-loading', {
+        replace: true,
+        state: { fileName, jobTitle, interviewType, resumeKey },
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    const firstQuestion: QuestionData = {
-      questionId: firstQuestionId,
-      questionText: firstQuestionText,
-      rootId: firstQuestionId,
-      rootText: firstQuestionText,
-      rootIndex: 1,
-      type: 'ROOT',
-    };
-
-    setCurrentQuestion(firstQuestion);
-    setQuestionHistory([firstQuestion]);
-  }, [sessionId, firstQuestionId, firstQuestionText, navigate]);
-
-  // 녹음 중지
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {
-        setIsRecording(false);
-        setIsPaused(false);
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-  };
-
-  // 타이머 시작/정지
+  /** ---------------- 타이머 ---------------- */
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = window.setInterval(() => {
@@ -98,6 +70,10 @@ export default function AnswerQuestion() {
         setRemainingTime((prev) => {
           if (prev <= 1) {
             stopRecording();
+            // 현재 스펙에선 sendTimeout이 nextQuestion을 돌려주지 않으므로 완료 처리
+            if (currentQuestion?.questionId) {
+              void handleTimeout(currentQuestion.questionId);
+            }
             return 0;
           }
           return prev - 1;
@@ -114,23 +90,16 @@ export default function AnswerQuestion() {
         timerRef.current = null;
       }
     };
-  }, [isRecording, isPaused]);
+  }, [isRecording, isPaused, currentQuestion?.questionId]);
 
-  // 시간 초과 처리
-  useEffect(() => {
-    if (remainingTime === 0 && !isTimeoutProcessedRef.current && currentQuestion) {
-      isTimeoutProcessedRef.current = true;
-      handleTimeout();
-    }
-  }, [remainingTime, currentQuestion]);
-
-  // 녹음 시작
+  /** ---------------- 녹음 제어 ---------------- */
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      latestAudioBlobRef.current = null;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -141,9 +110,10 @@ export default function AnswerQuestion() {
       mediaRecorder.onstop = () => {
         const mimeType = mediaRecorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        latestAudioBlobRef.current = audioBlob;
+
         const audioUrl = URL.createObjectURL(audioBlob);
-        setRecordedAudio(audioUrl);
-        setRecordedBlob(audioBlob);
+        setRecordedAudioUrl(audioUrl);
 
         // 재생 상태 초기화
         setIsPlaying(false);
@@ -156,23 +126,35 @@ export default function AnswerQuestion() {
       mediaRecorder.start();
       setIsRecording(true);
       setIsPaused(false);
-      setRecordedAudio(null);
-      setRecordedBlob(null);
+      setRecordedAudioUrl(null);
 
-      // 녹음 타이머 초기화
+      // 타이머 초기화
       setRecordingTime(0);
       setRemainingTime(180);
-      isTimeoutProcessedRef.current = false;
     } catch (error) {
       console.error('마이크 접근 오류:', error);
       alert('마이크 접근 권한이 필요합니다.');
     }
   };
 
-  // 녹음 일시정지/재개
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        /* noop */
+      }
+      setIsRecording(false);
+      setIsPaused(false);
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
   const togglePause = () => {
     if (!mediaRecorderRef.current) return;
-
     if (isPaused) {
       mediaRecorderRef.current.resume();
       setIsPaused(false);
@@ -182,7 +164,6 @@ export default function AnswerQuestion() {
     }
   };
 
-  // 재녹음
   const handleRetry = () => {
     if (retryCount > 0) {
       // 재생 중이면 멈춤
@@ -194,20 +175,17 @@ export default function AnswerQuestion() {
       setPlaybackTime(0);
       setPlaybackDuration(0);
 
-      setRecordedAudio(null);
-      setRecordedBlob(null);
+      setRecordedAudioUrl(null);
       setRecordingTime(0);
       setRemainingTime(180);
-      setRetryCount(retryCount - 1);
-      isTimeoutProcessedRef.current = false;
-      startRecording();
+      setRetryCount((c) => c - 1);
+      void startRecording();
     }
   };
 
-  // 오디오 재생/정지
+  /** ---------------- 재생 제어 ---------------- */
   const toggleAudioPlayback = () => {
     if (!audioRef.current) return;
-
     if (audioRef.current.paused) {
       audioRef.current
         .play()
@@ -219,7 +197,6 @@ export default function AnswerQuestion() {
     }
   };
 
-  // 오디오 이벤트 연결
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -229,11 +206,7 @@ export default function AnswerQuestion() {
       setPlaybackDuration(Math.floor(dur));
       setPlaybackTime(Math.floor(audio.currentTime || 0));
     };
-
-    const handleTimeUpdate = () => {
-      setPlaybackTime(Math.floor(audio.currentTime || 0));
-    };
-
+    const handleTimeUpdate = () => setPlaybackTime(Math.floor(audio.currentTime || 0));
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
@@ -256,46 +229,11 @@ export default function AnswerQuestion() {
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [recordedAudio, recordingTime]);
+  }, [recordedAudioUrl, recordingTime]);
 
-  // 시간 초과 처리
-  const handleTimeout = async () => {
-    if (!currentQuestion || isProcessing) return;
-
-    try {
-      setIsProcessing(true);
-      console.log('⏱️ 시간 초과 처리 시작:', currentQuestion.questionId);
-
-      const response = await sendTimeout(currentQuestion.questionId);
-
-      if (response.next && response.next.type !== 'NONE') {
-        // 다음 질문으로 이동
-        const nextQuestion: QuestionData = {
-          questionId: response.next.nextQuestionId!,
-          questionText: response.next.nextQuestionText!,
-          rootId: response.next.rootId,
-          rootText: response.next.rootText,
-          rootIndex: response.next.rootIndex,
-          type: response.next.type === 'ROOT' ? 'ROOT' : 'FOLLOW_UP',
-        };
-
-        setQuestionHistory((prev) => [...prev, nextQuestion]);
-        setCurrentQuestion(nextQuestion);
-        resetQuestionState();
-      } else {
-        // 모든 질문 종료
-        setShowCompleteModal(true);
-      }
-    } catch (error) {
-      console.error('❌ Timeout 처리 실패:', error);
-      alert('시간 초과 처리 중 오류가 발생했습니다.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // 질문 상태 초기화
-  const resetQuestionState = () => {
+  /** ---------------- 다음 질문 ---------------- */
+  const resetForNext = () => {
+    // 재생/녹음 상태 초기화
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -303,76 +241,71 @@ export default function AnswerQuestion() {
     setIsPlaying(false);
     setPlaybackTime(0);
     setPlaybackDuration(0);
-    setRecordedAudio(null);
-    setRecordedBlob(null);
+    setRecordedAudioUrl(null);
+    latestAudioBlobRef.current = null;
     setRecordingTime(0);
     setRemainingTime(180);
     setRetryCount(1);
-    isTimeoutProcessedRef.current = false;
   };
 
-  // 다음 질문 (녹음 업로드 + Polling)
+  const applyNext = (next: Question | null) => {
+    if (!next) {
+      setShowCompleteModal(true);
+      return;
+    }
+    setCurrentQuestion(next);
+    setOrdersSeen((prev) => (prev.includes(next.order) ? prev : [...prev, next.order].sort((a, b) => a - b)));
+  };
+
   const handleNext = async () => {
-    if (!recordedBlob || !currentQuestion || isProcessing) {
+    if (!currentQuestion?.questionId) return;
+    if (!latestAudioBlobRef.current) {
       alert('답변을 녹음해주세요.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      setIsProcessing(true);
-      console.log('📤 녹음 업로드 시작:', currentQuestion.questionId);
-
-      // 녹음 업로드 + Polling으로 다음 질문 받기
-      const nextQuestion = await uploadRecordingAndGetNext(
-        currentQuestion.questionId,
-        recordedBlob
-      );
-
-      if (nextQuestion && nextQuestion.type !== 'NONE') {
-        // 다음 질문으로 이동
-        const newQuestion: QuestionData = {
-          questionId: nextQuestion.nextQuestionId!,
-          questionText: nextQuestion.nextQuestionText!,
-          rootId: nextQuestion.rootId,
-          rootText: nextQuestion.rootText,
-          rootIndex: nextQuestion.rootIndex,
-          type: nextQuestion.type === 'ROOT' ? 'ROOT' : 'FOLLOW_UP',
-        };
-
-        setQuestionHistory((prev) => [...prev, newQuestion]);
-        setCurrentQuestion(newQuestion);
-        resetQuestionState();
-      } else {
-        // 모든 질문 종료
-        setShowCompleteModal(true);
-      }
-    } catch (error) {
-      console.error('❌ 다음 질문 처리 실패:', error);
-      alert('다음 질문을 불러오는데 실패했습니다.');
+      const next = await uploadRecordingAndGetNext(currentQuestion.questionId, latestAudioBlobRef.current);
+      resetForNext();
+      applyNext(next);
+    } catch (e) {
+      console.error('다음 질문 처리 실패:', e);
+      alert('녹음 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
-      setIsProcessing(false);
+      setIsSubmitting(false);
     }
   };
 
-  // 질문 클릭 (이전 질문으로 이동)
-  const handleQuestionClick = (index: number) => {
-    if (isProcessing) return;
-
-    // 녹음/재생 상태 정리
-    stopRecording();
-    resetQuestionState();
-
-    setCurrentQuestion(questionHistory[index]);
+  const handleTimeout = async (questionId: string) => {
+    try {
+      await sendTimeout(questionId);
+      // 현재 스펙에선 sendTimeout이 다음 질문을 주지 않으므로 종료 처리
+      resetForNext();
+      setShowCompleteModal(true);
+    } catch (e) {
+      console.error('시간초과 처리 실패:', e);
+      alert('시간초과 처리에 실패했습니다.');
+    }
   };
 
-  // 최종 피드백으로 이동
+  /** ---------------- 탭 이동(보여주기 용도) ---------------- */
+  const handleOrderTabClick = (order: number) => {
+    void order;
+    // 서버가 특정 order의 질문을 다시 불러오는 API를 제공하지 않음,.
+    // 탭은 보여주기 용도로 유지. (실제 질문 이동은 서버 응답에 따라갈 것)
+    // 필요 시 여기서 과거 질문 로깅/캐싱 구현 가능.
+  };
+
+  /** ---------------- 기타 ---------------- */
   const handleFinalFeedback = () => {
-    navigate('/feedback-result', {
-      state: { sessionId },
-    });
+    if (sessionId) {
+      navigate('/feedback-result', { state: { sessionId } });
+    } else {
+      navigate('/feedback-result');
+    }
   };
 
-  // 시간 포맷팅 (초 -> MM:SS)
   const formatTime = (seconds: number) => {
     const s = Math.max(0, Math.floor(seconds || 0));
     const mins = Math.floor(s / 60);
@@ -380,77 +313,47 @@ export default function AnswerQuestion() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const playbackPercent =
-    playbackDuration > 0
-      ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100))
-      : 0;
-
-  const currentQuestionIndex = currentQuestion
-    ? questionHistory.findIndex((q) => q.questionId === currentQuestion.questionId)
-    : -1;
-
-  if (!currentQuestion) {
-    return (
-      <InterviewLayout activeMenu="answer">
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500">질문을 불러오는 중...</p>
-        </div>
-      </InterviewLayout>
-    );
-  }
+  const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
 
   return (
     <InterviewLayout activeMenu="answer">
       <div className="flex-1 flex flex-col px-8 pt-2 max-w-[800px]">
         {/* 상단 정보 */}
         <div className="mb-4">
-          <span className="inline-block bg-gray-400 text-white px-4 py-1 rounded-full text-sm">
-            {resumeKey}
-          </span>
-          <p className="text-gray-600 text-md mt-3">
-            제한 시간 내에 면접질문에 답변해주세요.
-          </p>
+          <span className="inline-block bg-gray-400 text-white px-4 py-1 rounded-full text-sm">{fileName}</span>
+          <p className="text-gray-600 text-md mt-3">제한 시간 내에 면접질문에 답변해주세요.</p>
         </div>
 
-        {/* 질문 탭 */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {questionHistory.map((q, index) => (
+        {/* 질문 탭(표시용: order) */}
+        <div className="flex gap-2 mb-6">
+          {ordersSeen.map((o) => (
             <button
-              key={q.questionId}
-              onClick={() => handleQuestionClick(index)}
-              disabled={isProcessing}
-              className={`px-6 py-2 rounded-full text-sm font-medium transition-colors flex-shrink-0 ${
-                currentQuestion.questionId === q.questionId
+              key={o}
+              onClick={() => handleOrderTabClick(o)}
+              className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
+                currentQuestion?.order === o
                   ? 'bg-white border-2 border-coral-500 text-coral-500'
                   : 'bg-white border border-gray-300 text-gray-500 hover:border-gray-400'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              }`}
             >
-              질문{index + 1}
-              {q.type === 'FOLLOW_UP' && (
-                <span className="ml-1 text-xs">(꼬리)</span>
-              )}
+              질문{o}
             </button>
           ))}
         </div>
 
         {/* 질문 카드 */}
         <div className="bg-white rounded-2xl p-8 shadow-sm mb-6 flex-1">
-          <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">
-            {currentQuestionIndex + 1}. ({currentQuestion.rootText})
-          </h3>
+          <h3 className="text-xl font-semibold text-gray-700 mb-6 text-center">{currentQuestion ? `질문${currentQuestion.order}` : '질문'}</h3>
           <div className="border-t border-gray-200 pt-6" />
 
           <p className="text-gray-700 text-center mb-8">
-            {currentQuestion.questionText}
+            {currentQuestion?.mainQuestion}
+            {currentQuestion?.subQuestion ? ` — ${currentQuestion.subQuestion}` : ''}
           </p>
 
           {/* 캐릭터 이미지 */}
           <div className="flex justify-center mb-8">
-            <img
-              src="src/assets/clockFrog.svg"
-              alt="면접관"
-              className="w-48 h-auto"
-            />
+            <img src="src/assets/clockFrog.svg" alt="면접관" className="w-48 h-auto" />
           </div>
 
           {/* 타이머 & 녹음 컨트롤 */}
@@ -458,37 +361,23 @@ export default function AnswerQuestion() {
             {/* 타이머 */}
             <div className="mb-4">
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-coral-500 transition-all duration-300"
-                  style={{ width: `${(remainingTime / 180) * 100}%` }}
-                />
+                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / 180) * 100}%` }} />
               </div>
               <p className="text-center text-sm text-gray-500 mt-2">
-                {remainingTime > 0
-                  ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...`
-                  : '시간이 종료되었습니다.'}
+                {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...` : '시간이 종료되었습니다.'}
               </p>
             </div>
 
             {/* 녹음 컨트롤 */}
-            {!recordedAudio ? (
+            {!recordedAudioUrl ? (
               <div className="bg-gray-100 rounded-2xl p-6 mb-6">
                 <div className="flex items-center justify-center gap-4">
                   {!isRecording ? (
                     <button
                       onClick={startRecording}
-                      disabled={isProcessing || remainingTime === 0}
-                      className={`w-16 h-16 rounded-full flex items-center justify-center shadow-md transition-colors ${
-                        isProcessing || remainingTime === 0
-                          ? 'bg-gray-400 cursor-not-allowed'
-                          : 'bg-coral-500 hover:bg-coral-600'
-                      }`}
+                      className="w-16 h-16 bg-coral-500 hover:bg-coral-600 rounded-full flex items-center justify-center shadow-md transition-colors"
                     >
-                      <svg
-                        className="w-8 h-8 text-white"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
+                      <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
                         <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
                       </svg>
@@ -500,37 +389,23 @@ export default function AnswerQuestion() {
                         className="w-12 h-12 bg-yellow-500 hover:bg-yellow-600 rounded-full flex items-center justify-center shadow-md transition-colors"
                       >
                         {isPaused ? (
-                          <svg
-                            className="w-6 h-6 text-white ml-1"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
+                          <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z" />
                           </svg>
                         ) : (
-                          <svg
-                            className="w-6 h-6 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
+                          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                           </svg>
                         )}
                       </button>
 
-                      <span className="text-2xl font-bold text-coral-500">
-                        {formatTime(recordingTime)}
-                      </span>
+                      <span className="text-2xl font-bold text-coral-500">{formatTime(recordingTime)}</span>
 
                       <button
                         onClick={stopRecording}
                         className="w-12 h-12 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-md transition-colors"
                       >
-                        <svg
-                          className="w-6 h-6 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
+                        <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M6 6h12v12H6z" />
                         </svg>
                       </button>
@@ -544,27 +419,14 @@ export default function AnswerQuestion() {
                 <div className="flex items-center gap-4">
                   <button
                     onClick={toggleAudioPlayback}
-                    disabled={isProcessing}
-                    className={`w-12 h-12 rounded-full flex items-center justify-center shadow-md transition-colors flex-shrink-0 ${
-                      isProcessing
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-coral-500 hover:bg-coral-600'
-                    }`}
+                    className="w-12 h-12 bg-coral-500 hover:bg-coral-600 rounded-full flex items-center justify-center shadow-md transition-colors flex-shrink-0"
                   >
                     {isPlaying ? (
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                       </svg>
                     ) : (
-                      <svg
-                        className="w-5 h-5 text-white ml-1"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
+                      <svg className="w-5 h-5 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     )}
@@ -572,10 +434,7 @@ export default function AnswerQuestion() {
 
                   <div className="flex-1">
                     <div className="h-2 bg-gray-300 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-coral-500 rounded-full transition-all duration-150"
-                        style={{ width: `${playbackPercent}%` }}
-                      />
+                      <div className="h-full bg-coral-500 rounded-full transition-all duration-150" style={{ width: `${playbackPercent}%` }} />
                     </div>
                   </div>
 
@@ -583,22 +442,18 @@ export default function AnswerQuestion() {
                     {formatTime(playbackTime)} / {formatTime(playbackDuration)}
                   </span>
                 </div>
-                <audio
-                  ref={audioRef}
-                  src={recordedAudio || ''}
-                  preload="metadata"
-                />
+                <audio ref={audioRef} src={recordedAudioUrl || ''} preload="metadata" />
               </div>
             )}
 
-            {/* 다시 녹음하기 버튼 */}
-            {recordedAudio && (
+            {/* 다시 녹음하기 */}
+            {recordedAudioUrl && (
               <div className="flex justify-center mb-6">
                 <button
                   onClick={handleRetry}
-                  disabled={retryCount === 0 || isProcessing}
+                  disabled={retryCount === 0}
                   className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
-                    retryCount > 0 && !isProcessing
+                    retryCount > 0
                       ? 'bg-white border border-coral-500 text-coral-500 hover:bg-coral-50'
                       : 'bg-gray-200 border border-gray-300 text-gray-400 cursor-not-allowed'
                   }`}
@@ -614,14 +469,12 @@ export default function AnswerQuestion() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleNext}
-            disabled={!recordedAudio || isProcessing}
+            disabled={!recordedAudioUrl || isSubmitting || !currentQuestion?.questionId}
             className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-              recordedAudio && !isProcessing
-                ? 'bg-coral-400 hover:bg-coral-500 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              recordedAudioUrl && !isSubmitting ? 'bg-coral-400 hover:bg-coral-500 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {isProcessing ? '처리 중...' : '다음'}
+            {isSubmitting ? '처리 중...' : '다음'}
           </button>
         </div>
       </div>
@@ -631,19 +484,10 @@ export default function AnswerQuestion() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-12 max-w-md w-full mx-4 text-center">
             <div className="mb-6">
-              <img
-                src="src/assets/orangeFrog.svg"
-                alt="완료"
-                className="w-24 h-auto mx-auto"
-              />
+              <img src="src/assets/orangeFrog.svg" alt="완료" className="w-24 h-auto mx-auto" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 mb-8">
-              모든 질문에 완벽히 답했어요!
-            </p>
-            <button
-              onClick={handleFinalFeedback}
-              className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-lg font-medium transition-colors"
-            >
+            <p className="text-2xl font-bold text-gray-900 mb-8">모든 질문에 완벽히 답했어요!</p>
+            <button onClick={handleFinalFeedback} className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-3 rounded-lg font-medium transition-colors">
               최종 피드백 확인
             </button>
           </div>
@@ -651,33 +495,15 @@ export default function AnswerQuestion() {
       )}
 
       <style>{`
-        .bg-coral-50 {
-          background-color: #fff5f5;
-        }
-        .bg-coral-400 {
-          background-color: #ff9580;
-        }
-        .bg-coral-500 {
-          background-color: #ff7f66;
-        }
-        .bg-coral-600 {
-          background-color: #ff6b52;
-        }
-        .text-coral-500 {
-          color: #ff7f66;
-        }
-        .border-coral-500 {
-          border-color: #ff7f66;
-        }
-        .hover\\:bg-coral-500:hover {
-          background-color: #ff7f66;
-        }
-        .hover\\:bg-coral-50:hover {
-          background-color: #fff5f5;
-        }
-        .hover\\:bg-coral-600:hover {
-          background-color: #ff6b52;
-        }
+        .bg-coral-50 { background-color: #fff5f5; }
+        .bg-coral-400 { background-color: #ff9580; }
+        .bg-coral-500 { background-color: #ff7f66; }
+        .bg-coral-600 { background-color: #ff6b52; }
+        .text-coral-500 { color: #ff7f66; }
+        .border-coral-500 { border-color: #ff7f66; }
+        .hover\\:bg-coral-500:hover { background-color: #ff7f66; }
+        .hover\\:bg-coral-50:hover { background-color: #fff5f5; }
+        .hover\\:bg-coral-600:hover { background-color: #ff6b52; }
       `}</style>
     </InterviewLayout>
   );

@@ -1,97 +1,80 @@
-import { useEffect, useState } from 'react';
+﻿// src/pages/Interview/question_loading.tsx
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
 import InterviewLayout from '@/layouts/InterviewLayout';
-import { createInterviewSession, extractResumeId } from '@/services/interviewApi';
+
+import { createInterviewSession } from '@/services/interviewApi';
+import type { CreateInterviewSessionResponse } from '@/services/interviewApi';
+
+const ANSWER_ROUTE = '/main-answer'; // 프로젝트 라우트에 맞게 조정하세요
 
 export default function QuestionLoading() {
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  const {
-    resumeKey,
-    jobTitle,
-    interviewType,
-  } = location.state || {};
-
-  const [error, setError] = useState('');
+  const location = useLocation() as {
+    state?: {
+      fileName?: string;
+      jobTitle?: string;
+      interviewType?: 'normal' | 'pressure';
+      resumeKey?: string; // S3 key
+    };
+  };
 
   useEffect(() => {
-    // 필수 데이터 체크
-    if (!resumeKey || !jobTitle || !interviewType) {
-      navigate('/upload', { replace: true });
-      return;
-    }
-
-    const createSession = async () => {
+    const bootstrap = async () => {
       try {
-        console.log('🎬 면접 세션 생성 시작');
-        console.log('- Resume Key:', resumeKey);
-        console.log('- Job Title:', jobTitle);
-        console.log('- Interview Type:', interviewType);
+        const fileName = location.state?.fileName ?? '자소서';
+        const jobTitle = location.state?.jobTitle;
+        const interviewType = location.state?.interviewType ?? 'normal';
+        const resumeKey = location.state?.resumeKey;
 
-        // S3 key에서 resumeId 추출
-        const resumeId = extractResumeId(resumeKey);
-        console.log('- Resume ID:', resumeId);
+        if (!jobTitle || !resumeKey) {
+          alert('면접 생성에 필요한 정보가 없습니다. (jobTitle/resumeKey)');
+          navigate(-1);
+          return;
+        }
 
-        // 면접 세션 생성
-        const session = await createInterviewSession({
-          mode: interviewType === 'pressure' ? 'HARD' : 'NORMAL',
-          jobRole: jobTitle,
-          resumeId: resumeId,
+        // 스펙에 맞게 그대로 전송
+        const resp: CreateInterviewSessionResponse = await createInterviewSession({
+          resumeKey,
+          jobTitle,
+          interviewType, // 'normal' | 'pressure'
         });
 
-        console.log('✅ 면접 세션 생성 성공:', session);
-
-        // 면접 페이지로 이동 (약간의 딜레이 후)
-        setTimeout(() => {
-          navigate('/main-answer', {
-            state: {
-              sessionId: session.sessionId,
-              firstQuestionId: session.firstQuestionId,
-              firstQuestionText: session.firstQuestionText,
-              resumeKey,
-              jobTitle,
-              interviewType,
-            },
-            replace: true,
-          });
-        }, 1000);
-      } catch (err) {
-        console.error('❌ 면접 세션 생성 실패:', err);
-        setError('면접 세션 생성에 실패했습니다. 다시 시도해주세요.');
-        
-        // 에러 시 3초 후 업로드 페이지로 이동
-        setTimeout(() => {
-          navigate('/upload', { replace: true });
-        }, 3000);
+        // 성공 → 답변 페이지로 이동 (필요값 전달)
+        navigate(ANSWER_ROUTE, {
+          replace: true,
+          state: {
+            fileName,
+            jobTitle,
+            interviewType,
+            resumeKey,
+            sessionId: resp.sessionId,
+            firstQuestion: resp.firstQuestion,
+            fromLoading: true,
+          },
+        });
+      } catch (e) {
+        console.error('질문 생성 실패:', e);
+        alert('맞춤형 질문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        navigate(-1);
       }
     };
 
-    createSession();
-  }, [navigate, resumeKey, jobTitle, interviewType]);
+    void bootstrap();
+  }, [location.state, navigate]);
 
   return (
     <InterviewLayout activeMenu="answer">
       {/* 중앙 컨텐츠 영역 */}
       <div className="flex-1 flex flex-col items-center justify-center">
-        {error ? (
-          <div className="text-center">
-            <p className="text-red-500 text-xl font-semibold mb-4">{error}</p>
-            <p className="text-gray-600">업로드 페이지로 돌아갑니다...</p>
-          </div>
-        ) : (
-          <>
-            <p className="text-gray-900 text-2xl font-semibold mb-12">AI가 맞춤형 질문을 생성중입니다 ...</p>
+        <p className="text-gray-900 text-2xl font-semibold mb-12">AI가 맞춤형 질문을 생성중입니다 ...</p>
 
-            {/* 로딩 애니메이션 - 점 3개 */}
-            <div className="flex gap-3">
-              <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </>
-        )}
+        {/* 로딩 애니메이션 - 점 3개 */}
+        <div className="flex gap-3">
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+          <div className="w-4 h-4 bg-coral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+        </div>
       </div>
 
       {/* 오른쪽 캐릭터 이미지 */}
@@ -100,20 +83,12 @@ export default function QuestionLoading() {
       </div>
 
       <style>{`
-        .bg-coral-500 {
-          background-color: #ff7f66;
-        }
+        .bg-coral-500 { background-color: #ff7f66; }
         @keyframes bounce {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-20px);
-          }
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-20px); }
         }
-        .animate-bounce {
-          animation: bounce 0.6s ease-in-out infinite;
-        }
+        .animate-bounce { animation: bounce 0.6s ease-in-out infinite; }
       `}</style>
     </InterviewLayout>
   );
