@@ -12,10 +12,10 @@ import AngryFrog from '@/assets/angryFrog.svg?react';
 import Frog from '@/assets/frog.svg?react';
 import { route } from '@/routes/route';
 
-type CategoryKey = 'interview' | 'evaluate';
+type TCategoryKey = 'interview' | 'evaluate';
 
-type Category = {
-  key: CategoryKey;
+type TCategory = {
+  key: TCategoryKey;
   title: string;
   description: string;
   routes: string;
@@ -24,7 +24,7 @@ type Category = {
 export default function MyPage() {
   const navigate = useNavigate();
 
-  const categories: Category[] = [
+  const categories: TCategory[] = [
     {
       key: 'interview',
       title: '나의 면접,',
