@@ -8,8 +8,10 @@ import { uploadRecordingAndGetNext, timeoutAndGetNextQuestion } from '@/services
 
 import clockFrog from '@/assets/clockFrog.svg';
 import orangeFrog from '@/assets/orangeFrog.svg';
+import frog from '@/assets/frog.svg';
 
-const MAX_TIME = 180;
+const INITIAL_TIME = 30; // 녹음 시작 전 제한 시간
+const RECORDING_TIME = 80; // 녹음 후 전체 시간
 
 export default function AnswerQuestion() {
   const navigate = useNavigate();
@@ -37,7 +39,8 @@ export default function AnswerQuestion() {
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
 
-  const [remainingTime, setRemainingTime] = useState(MAX_TIME);
+  const [remainingTime, setRemainingTime] = useState(INITIAL_TIME);
+  const [hasStartedRecording, setHasStartedRecording] = useState(false); // 녹음을 시작했는지 여부
 
   const [retryCount, setRetryCount] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,6 +53,7 @@ export default function AnswerQuestion() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(0);
+  
   // 남은 시간이 줄어들어야 하는지 여부:
   // - 질문 노출 & 완료모달 아님 & 남은시간 > 0
   // - (녹음 중) 또는 (아직 녹음본이 없음 = 최초 진입 상태)
@@ -78,7 +82,8 @@ export default function AnswerQuestion() {
     latestAudioBlobRef.current = null;
     setRecordingTime(0);
 
-    setRemainingTime(MAX_TIME); // 다음 질문에서만 초기화
+    setRemainingTime(INITIAL_TIME); // 다음 질문에서 초기화
+    setHasStartedRecording(false); // 녹음 시작 여부 초기화
     setRetryCount(1);
   }
 
@@ -157,6 +162,12 @@ export default function AnswerQuestion() {
 
   const startRecording = async () => {
     try {
+      // 녹음 시작 시 전체 시간을 80초로 변경
+      if (!hasStartedRecording) {
+        setRemainingTime(RECORDING_TIME);
+        setHasStartedRecording(true);
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -225,7 +236,7 @@ export default function AnswerQuestion() {
       audioChunksRef.current = [];
 
       // ✅ 다시 녹음하기: 시간 초기화
-      setRemainingTime(MAX_TIME);
+      setRemainingTime(RECORDING_TIME);
 
       setRetryCount((c) => c - 1);
       void startRecording();
@@ -349,9 +360,28 @@ export default function AnswerQuestion() {
 
   const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
 
+  // 이미지 선택: 30초 이하면 clockFrog, 아니면 frog
+  const currentImage = remainingTime <= 30 ? clockFrog : frog;
+
+  // 빨간 오버레이 opacity 계산 (30초 이하일 때만)
+  const redOverlayOpacity = remainingTime <= 30 ? Math.min(0.3, (30 - remainingTime) / 30 * 0.3) : 0;
+
+  // 진행바 색상 (녹음 시작 전: 파란색, 녹음 후: coral)
+  const progressBarColor = hasStartedRecording ? 'bg-coral-500' : 'bg-blue-500';
+
+  // 최대 시간 (진행바 계산용)
+  const maxTime = hasStartedRecording ? RECORDING_TIME : INITIAL_TIME;
+
   return (
     <InterviewLayout activeMenu="answer">
-      <div className="flex-1 flex flex-col px-8 pt-2 max-w-[800px]">
+      {/* 빨간 오버레이 */}
+      {redOverlayOpacity > 0 && (
+        <div 
+          className="fixed inset-0 bg-red-500 pointer-events-none z-10"
+          style={{ opacity: redOverlayOpacity }}
+        />
+      )}
+      <div className="flex-1 flex flex-col px-8 pt-2 max-w-[800px] relative z-20">
         {/* 상단 정보 */}
         <div className="mb-4">
           <span className="inline-block bg-gray-400 text-white px-4 py-1 rounded-full text-sm">{fileName}</span>
@@ -387,7 +417,7 @@ export default function AnswerQuestion() {
 
           {/* 캐릭터 이미지 */}
           <div className="flex justify-center mb-8">
-            <img src={clockFrog} alt="면접관" className="w-48 h-auto" />
+            <img src={currentImage} alt="면접관" className="w-48 h-auto" />
           </div>
 
           {/* 타이머 & 녹음 컨트롤 */}
@@ -395,10 +425,14 @@ export default function AnswerQuestion() {
             {/* 타이머 */}
             <div className="mb-4">
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${(remainingTime / MAX_TIME) * 100}%` }} />
+                <div className={`h-full ${progressBarColor} transition-all duration-300`} style={{ width: `${(remainingTime / maxTime) * 100}%` }} />
               </div>
               <p className="text-center text-sm text-gray-500 mt-2">
-                {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...` : '시간이 종료되었습니다.'}
+                {!hasStartedRecording ? (
+                  remainingTime > 0 ? `녹음을 시작하세요 (${remainingTime}초)` : '시간이 종료되었습니다.'
+                ) : (
+                  remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다 ...` : '시간이 종료되었습니다.'
+                )}
               </p>
             </div>
 
@@ -533,6 +567,7 @@ export default function AnswerQuestion() {
         .bg-coral-400 { background-color: #ff9580; }
         .bg-coral-500 { background-color: #ff7f66; }
         .bg-coral-600 { background-color: #ff6b52; }
+        .bg-blue-500 { background-color: #3b82f6; }
         .text-coral-500 { color: #ff7f66; }
         .border-coral-500 { border-color: #ff7f66; }
         .hover\\:bg-coral-500:hover { background-color: #ff7f66; }

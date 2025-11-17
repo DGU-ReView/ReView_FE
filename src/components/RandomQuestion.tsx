@@ -8,9 +8,11 @@ import {
   type IRandomNotificationPayload,
 } from '@/services/randomQuestionApi';
 import clockFrog from '@/assets/clockFrog.svg';
+import frog from '@/assets/frog.svg';
 
 type TNotification = IRandomNotificationPayload;
-const MAX_TIME = 180;
+const INITIAL_TIME = 30; // 녹음 시작 전 제한 시간
+const RECORDING_TIME = 80; // 녹음 후 전체 시간
 const isDev = import.meta.env.DEV;
 
 // 🔎 알림 페이로드에서 id를 안전하게 뽑아오기 (peerAnswerId 우선, 없으면 peerFeedbackId)
@@ -28,7 +30,8 @@ export default function RandomQuestion() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // ===== 타이머 상태 =====
-  const [remainingTime, setRemainingTime] = useState<number>(MAX_TIME);
+  const [remainingTime, setRemainingTime] = useState<number>(INITIAL_TIME);
+  const [hasStartedRecording, setHasStartedRecording] = useState(false); // 녹음을 시작했는지 여부
   const countdownTimerRef = useRef<number | null>(null);
 
   // ===== 녹음 상태 =====
@@ -58,6 +61,18 @@ export default function RandomQuestion() {
   const fetchAbortRef = useRef<AbortController | null>(null);
 
   const shouldTickPopup = showPopup && remainingTime > 0 && (isRecording || (!recordedAudio && !isPlaying));
+
+  // 이미지 선택: 30초 이하면 clockFrog, 아니면 frog
+  const currentImage = remainingTime <= 30 ? clockFrog : frog;
+
+  // 빨간 오버레이 opacity 계산 (30초 이하일 때만)
+  const redOverlayOpacity = remainingTime <= 30 ? Math.min(0.3, (30 - remainingTime) / 30 * 0.3) : 0;
+
+  // 진행바 색상 (녹음 시작 전: 파란색, 녹음 후: coral)
+  const progressBarColor = hasStartedRecording ? 'bg-coral-500' : 'bg-blue-500';
+
+  // 최대 시간 (진행바 계산용)
+  const maxTime = hasStartedRecording ? RECORDING_TIME : INITIAL_TIME;
 
   const clearReconnectTimer = () => {
     if (reconnectTimerRef.current) {
@@ -130,7 +145,8 @@ export default function RandomQuestion() {
       });
       latestAudioBlobRef.current = null;
       setRecordingTime(0);
-      setRemainingTime(MAX_TIME);
+      setRemainingTime(INITIAL_TIME);
+      setHasStartedRecording(false);
 
       await fetchRandomQuestion(id);
     } catch {
@@ -182,7 +198,8 @@ export default function RandomQuestion() {
     if (recordedAudio) URL.revokeObjectURL(recordedAudio);
     latestAudioBlobRef.current = null;
     setRecordingTime(0);
-    setRemainingTime(MAX_TIME);
+    setRemainingTime(INITIAL_TIME);
+    setHasStartedRecording(false);
 
     if (peerAnswerId === -1) {
       setLoadingQuestion(true);
@@ -292,6 +309,13 @@ export default function RandomQuestion() {
       alert('시간이 종료되어 더 이상 녹음할 수 없습니다.');
       return;
     }
+    
+    // 녹음 시작 시 전체 시간을 80초로 변경
+    if (!hasStartedRecording) {
+      setRemainingTime(RECORDING_TIME);
+      setHasStartedRecording(true);
+    }
+    
     try {
       if (recordedAudio) {
         URL.revokeObjectURL(recordedAudio);
@@ -371,7 +395,8 @@ export default function RandomQuestion() {
     setRecordingTime(0);
     latestAudioBlobRef.current = null;
     audioChunksRef.current = [];
-    setRemainingTime(MAX_TIME);
+    // ✅ 다시 녹음하기: 시간 초기화
+    setRemainingTime(RECORDING_TIME);
     void startRecording();
   };
 
@@ -421,6 +446,7 @@ export default function RandomQuestion() {
     if (isRecording) stopRecording();
     if (audioRef.current) audioRef.current.pause();
     setShowPopup(false);
+    setHasStartedRecording(false);
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
@@ -446,6 +472,7 @@ export default function RandomQuestion() {
       const feedback = await uploadFeedbackRecordingAndGetResult(questionDetail.question.questionId, latestAudioBlobRef.current);
       alert(`AI 피드백이 도착했어요.\n\n${feedback.aiFeedback}`);
       setShowPopup(false);
+      setHasStartedRecording(false);
     } catch (err) {
       console.error('랜덤 팝업 답변 제출 실패:', err);
       alert('답변 제출에 실패했습니다. 잠시 후 다시 시도해주세요.');
@@ -455,7 +482,8 @@ export default function RandomQuestion() {
   };
 
   const playbackPercent = playbackDuration > 0 ? Math.min(100, Math.max(0, (playbackTime / playbackDuration) * 100)) : 0;
-  const progressPercent = Math.max(0, Math.min(100, (remainingTime / MAX_TIME) * 100));
+  // ✅ 진행바: 남은 시간 비율로 표시
+  const progressPercent = Math.max(0, Math.min(100, (remainingTime / maxTime) * 100));
 
   return (
     <>
@@ -470,7 +498,14 @@ export default function RandomQuestion() {
 
       {!showPopup ? null : (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 shadow-lg w-full max-w-md mx-4 relative">
+          {/* 빨간 오버레이 */}
+          {redOverlayOpacity > 0 && (
+            <div 
+              className="fixed inset-0 bg-red-500 pointer-events-none z-[51]"
+              style={{ opacity: redOverlayOpacity }}
+            />
+          )}
+          <div className="bg-white rounded-2xl p-8 shadow-lg w-full max-w-md mx-4 relative z-[52]">
             <button onClick={handleClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors" aria-label="닫기">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -502,16 +537,20 @@ export default function RandomQuestion() {
             )}
 
             <div className="flex justify-center mb-4">
-              <img src={clockFrog} alt="면접관" className="w-32 h-auto" />
+              <img src={currentImage} alt="면접관" className="w-32 h-auto" />
             </div>
 
             <p className="text-center text-sm text-gray-500 mb-4">
-              {remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다.` : '시간이 종료되었습니다.'}
+              {!hasStartedRecording ? (
+                remainingTime > 0 ? `녹음을 시작하세요 (${remainingTime}초)` : '시간이 종료되었습니다.'
+              ) : (
+                remainingTime > 0 ? `답변 가능 시간이 ${remainingTime}초 남았습니다.` : '시간이 종료되었습니다.'
+              )}
             </p>
 
             <div className="mb-4">
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-coral-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                <div className={`h-full ${progressBarColor} transition-all duration-300`} style={{ width: `${progressPercent}%` }} />
               </div>
               <p className="text-center text-sm text-gray-500 mt-2">랜덤 팝업 질문</p>
             </div>
@@ -619,6 +658,7 @@ export default function RandomQuestion() {
             .bg-coral-50 { background-color: #fff5f5; }
             .bg-coral-500 { background-color: #ff7f66; }
             .bg-coral-600 { background-color: #ff6b52; }
+            .bg-blue-500 { background-color: #3b82f6; }
             .text-coral-500 { color: #ff7f66; }
             .border-coral-500 { border-color: #ff7f66; }
             .hover\\:bg-coral-50:hover { background-color: #fff5f5; }

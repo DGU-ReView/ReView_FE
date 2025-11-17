@@ -65,49 +65,37 @@ export default function MyInterviews() {
     }
   }, [questionCards, selectedQuestionId]);
 
-  // ---------- 피드백 탭: 모든 질문 피드백 로딩 ----------
+  // ---------- 피드백 탭: 루트 질문에 대해서만 피드백 조회 ----------
   useEffect(() => {
-    if (activeTab !== 'feedback' || answerItems.length === 0) return;
+    if (activeTab !== 'feedback' || !selectedQuestionId) return;
 
-    const fetchAllFeedback = async () => {
+    const fetchFeedback = async () => {
       setLoadingFeedback(true);
       try {
-        const all = await Promise.all(
-          answerItems.map(async (answer) => {
-            try {
-              const feedback = await getQuestionFeedback(answer.questionId);
-              const res = (feedback as any)?.result ?? {};
-              return {
-                order: answer.order,
-                questionId: answer.questionId,
-                question: answer.question,
-                aiFeedback: res.aiFeedback ?? '',
-                selfFeedback: res.selfFeedback ?? '',
-                peerItems: Array.isArray(res.peerItems) ? res.peerItems : [],
-              } as FeedbackItem;
-            } catch (e) {
-              console.error(`질문 ${answer.questionId} 피드백 조회 실패:`, e);
-              return {
-                order: answer.order,
-                questionId: answer.questionId,
-                question: answer.question,
-                aiFeedback: '',
-                selfFeedback: '',
-                peerItems: [],
-              } as FeedbackItem;
-            }
-          }),
-        );
-        setFeedbackList(all);
+        const feedback = await getQuestionFeedback(selectedQuestionId);
+        const res = (feedback as any)?.result ?? {};
+        
+        // 루트 질문에 대한 통합 피드백을 모든 질문에 표시
+        const feedbackItem: FeedbackItem = {
+          order: 1,
+          questionId: selectedQuestionId,
+          question: '전체 답변에 대한 피드백',
+          aiFeedback: res.aiFeedback ?? '',
+          selfFeedback: res.selfFeedback ?? '',
+          peerItems: Array.isArray(res.peerItems) ? res.peerItems : [],
+        };
+        
+        setFeedbackList([feedbackItem]);
       } catch (e) {
-        console.error('피드백 조회 중 오류:', e);
+        console.error('피드백 조회 실패:', e);
+        setFeedbackList([]);
       } finally {
         setLoadingFeedback(false);
       }
     };
 
-    void fetchAllFeedback();
-  }, [activeTab, answerItems]);
+    void fetchFeedback();
+  }, [activeTab, selectedQuestionId]);
 
   // ---------- 오디오 재생 ----------
   const handleAudioPlay = (url: string) => {
@@ -251,8 +239,8 @@ export default function MyInterviews() {
                     {(feedbackList ?? []).map((item) => (
                       <div key={item.questionId} className="bg-gray-50 rounded-lg p-5">
                         <div className="mb-4">
-                          <span className="inline-block bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium mr-2">질문 {item.order}</span>
-                          <h3 className="text-lg font-semibold text-gray-900 mt-2">{item.question}</h3>
+                          <h3 className="text-lg font-semibold text-gray-900">전체 답변에 대한 피드백</h3>
+                          <p className="text-sm text-gray-500 mt-1">루트 질문과 모든 꼬리 질문에 대한 통합 피드백입니다.</p>
                         </div>
 
                         <div className="space-y-3">
