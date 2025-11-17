@@ -39,13 +39,13 @@ export default function FeedbackResult() {
 
         // feedbackProgressStatus 확인
         if (response.feedbackProgressStatus === 'WORKING') {
-          // 피드백 생성 중 - 5초 후 재시도
+          // 피드백 생성 중 - 5초 후 재시도 (로딩 상태 유지)
           setTimeout(fetchFeedback, 5000);
           return;
         }
 
         if (response.feedbackProgressStatus === 'FAILED') {
-          setError('피드백 생성에 실패했습니다.');
+          setError('피드백 데이터를 불러올 수 없습니다.');
           setIsLoading(false);
           return;
         }
@@ -83,8 +83,8 @@ export default function FeedbackResult() {
             <div className="mb-4">
               <img src="src/assets/clockFrog.svg" alt="로딩" className="w-32 h-auto mx-auto animate-pulse" />
             </div>
-            <p className="text-gray-600 text-lg">피드백을 생성하고 있습니다...</p>
-            <p className="text-gray-500 text-sm mt-2">최대 5분 정도 소요될 수 있습니다.</p>
+            <p className="text-gray-600 text-lg font-semibold">로딩 중...</p>
+            <p className="text-gray-500 text-sm mt-2">피드백을 불러오고 있습니다. 잠시만 기다려주세요.</p>
           </div>
         </div>
       </InterviewLayout>
